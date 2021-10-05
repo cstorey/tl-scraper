@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use secrecy::SecretString;
 use structopt::StructOpt;
-use tl_scraper::{authenticate, fetch_info};
+use tl_scraper::TlClient;
 use tracing::info;
 
 #[derive(Debug, StructOpt)]
@@ -39,10 +39,10 @@ async fn main() -> Result<()> {
     let client = reqwest::Client::new();
 
     let token_path = Path::new(TOKEN_FILE);
-    let token_response =
-        authenticate(&client, token_path, client_id, client_secret, access_code).await?;
+    let tl =
+        TlClient::authenticate(client, token_path, client_id, client_secret, access_code).await?;
 
-    let info_response = fetch_info(&client, &token_response).await?;
+    let info_response = tl.fetch_info().await?;
 
     info!(json=?info_response, "Response");
 

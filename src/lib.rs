@@ -2,7 +2,7 @@ use std::{fs::File, io::Write, path::Path};
 
 use anyhow::Result;
 use hyper::Uri;
-use reqwest::{RequestBuilder, Response};
+use reqwest::{Client, RequestBuilder, Response};
 use secrecy::{ExposeSecret, Secret, SecretString, Zeroize};
 use serde::{Deserialize, Serialize, Serializer};
 use tempfile::NamedTempFile;
@@ -49,47 +49,72 @@ pub struct UserInfoResult {
     pub update_timestamp: String,
 }
 
+pub struct TlClient {
+    client: Client,
+    // TODO: Will change when we actually implement refresh
+    auth: FetchAccessTokenResponse,
+}
+
 const SANDBOX_API_HOST: &str = "api.truelayer-sandbox.com";
 const SANDBOX_AUTH_HOST: &str = "auth.truelayer-sandbox.com";
 const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
 
-pub async fn fetch_info(
-    client: &reqwest::Client,
-    token_response: &FetchAccessTokenResponse,
-) -> Result<UserInfoResponse> {
-    let url = Uri::builder()
-        .scheme("https")
-        .authority(SANDBOX_API_HOST)
-        .path_and_query("/data/v1/info")
-        .build()?;
-    let info_response = perform_request(
-        client
-            .get(&url.to_string())
-            .bearer_auth(token_response.access_token.expose_secret()),
-    )
-    .await?
-    .json::<UserInfoResponse>()
-    .await?;
-    Ok(info_response)
-}
+impl TlClient {
+    pub async fn authenticate(
+        client: reqwest::Client,
+        token_path: &Path,
+        client_id: String,
+        client_secret: Secret<String>,
+        access_code: Secret<String>,
+    ) -> Result<Self> {
+        let auth = if token_path.exists() {
+            let data: FetchAccessTokenResponse = serde_json::from_reader(&File::open(token_path)?)?;
+            data
+        } else {
+            let token_response =
+                Self::fetch_access_token(client_id, client_secret, access_code, &client).await?;
 
-pub async fn authenticate(
-    client: &reqwest::Client,
-    token_path: &Path,
-    client_id: String,
-    client_secret: Secret<String>,
-    access_code: Secret<String>,
-) -> Result<FetchAccessTokenResponse> {
-    let token_response = if token_path.exists() {
-        let data: FetchAccessTokenResponse = serde_json::from_reader(&File::open(token_path)?)?;
-        data
-    } else {
+            info!(?token_response, "Response");
+            let mut tmpf = NamedTempFile::new_in(".")?;
+            serde_json::to_writer_pretty(&mut tmpf, &token_response)?;
+            tmpf.as_file_mut().flush()?;
+            tmpf.persist(token_path)?;
+            token_response
+        };
+
+        let me = Self { client, auth };
+
+        Ok(me)
+    }
+
+    pub async fn fetch_info(&self) -> Result<UserInfoResponse> {
+        let url = Uri::builder()
+            .scheme("https")
+            .authority(SANDBOX_API_HOST)
+            .path_and_query("/data/v1/info")
+            .build()?;
+        let info_response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .bearer_auth(self.auth.access_token.expose_secret()),
+        )
+        .await?
+        .json::<UserInfoResponse>()
+        .await?;
+        Ok(info_response)
+    }
+
+    async fn fetch_access_token(
+        client_id: String,
+        client_secret: Secret<String>,
+        access_code: Secret<String>,
+        client: &Client,
+    ) -> Result<FetchAccessTokenResponse> {
         let url = Uri::builder()
             .scheme("https")
             .authority(SANDBOX_AUTH_HOST)
             .path_and_query("/connect/token")
             .build()?;
-
         let fetch_access_token_request = FetchAccessTokenRequest {
             grant_type: GrantType::AuthorizationCode,
             client_id,
@@ -97,7 +122,6 @@ pub async fn authenticate(
             redirect_uri: REDIRECT_URI.into(),
             code: access_code,
         };
-
         let token_response = perform_request(
             client
                 .post(&url.to_string())
@@ -106,15 +130,8 @@ pub async fn authenticate(
         .await?
         .json::<FetchAccessTokenResponse>()
         .await?;
-
-        info!(?token_response, "Response");
-        let mut tmpf = NamedTempFile::new_in(".")?;
-        serde_json::to_writer_pretty(&mut tmpf, &token_response)?;
-        tmpf.as_file_mut().flush()?;
-        tmpf.persist(token_path)?;
-        token_response
-    };
-    Ok(token_response)
+        Ok(token_response)
+    }
 }
 
 fn serialize_secret<T: Zeroize + Serialize, S: Serializer>(
