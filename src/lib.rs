@@ -1,7 +1,7 @@
 use anyhow::Result;
-use reqwest::{RequestBuilder, Response};
+use reqwest::RequestBuilder;
 use secrecy::{ExposeSecret, Secret, Zeroize};
-use serde::{Serialize, Serializer};
+use serde::{de::DeserializeOwned, Serialize, Serializer};
 use tracing::{debug, error};
 
 mod authentication;
@@ -25,7 +25,7 @@ fn serialize_optional_secret<T: Zeroize + Serialize, S: Serializer>(
         .serialize(serializer)
 }
 
-async fn perform_request(req: RequestBuilder) -> Result<Response> {
+async fn perform_request<R: DeserializeOwned>(req: RequestBuilder) -> Result<R> {
     let res = req.send().await?;
 
     if let Err(error) = res.error_for_status_ref() {
@@ -35,6 +35,7 @@ async fn perform_request(req: RequestBuilder) -> Result<Response> {
         }
         Err(error.into())
     } else {
-        Ok(res)
+        let result = res.json().await?;
+        Ok(result)
     }
 }

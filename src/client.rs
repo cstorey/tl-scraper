@@ -191,8 +191,6 @@ impl TlClient {
                 .get(&url.to_string())
                 .bearer_auth(access_token.expose_secret()),
         )
-        .await?
-        .json::<UserInfoResponse>()
         .await?;
         Ok(info_response)
     }
@@ -209,8 +207,6 @@ impl TlClient {
                 .get(&url.to_string())
                 .bearer_auth(access_token.expose_secret()),
         )
-        .await?
-        .json()
         .await?;
         Ok(info_response)
     }
@@ -230,8 +226,6 @@ impl TlClient {
                 .get(&url.to_string())
                 .bearer_auth(access_token.expose_secret()),
         )
-        .await?
-        .json()
         .await?;
         Ok(response)
     }
@@ -257,8 +251,6 @@ impl TlClient {
                 .query(&[("from", &from_date), ("to", &to_date)])
                 .bearer_auth(access_token.expose_secret()),
         )
-        .await?
-        .json()
         .await?;
         Ok(response)
     }
@@ -275,8 +267,6 @@ impl TlClient {
                 .get(&url.to_string())
                 .bearer_auth(access_token.expose_secret()),
         )
-        .await?
-        .json()
         .await?;
         Ok(response)
     }
@@ -296,8 +286,6 @@ impl TlClient {
                 .get(&url.to_string())
                 .bearer_auth(access_token.expose_secret()),
         )
-        .await?
-        .json()
         .await?;
         Ok(response)
     }
@@ -323,8 +311,6 @@ impl TlClient {
                 .query(&[("from", &from_date), ("to", &to_date)])
                 .bearer_auth(access_token.expose_secret()),
         )
-        .await?
-        .json()
         .await?;
         Ok(response)
     }

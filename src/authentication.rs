@@ -143,8 +143,6 @@ impl Authenticator {
                 .post(&url.to_string())
                 .form(&fetch_access_token_request),
         )
-        .await?
-        .json::<FetchAccessTokenResponse>()
         .await?;
         Ok(token_response)
     }
@@ -168,8 +166,6 @@ impl Authenticator {
                 .post(&url.to_string())
                 .form(&fetch_access_token_request),
         )
-        .await?
-        .json::<FetchAccessTokenResponse>()
         .await?;
         Ok(token_response)
     }
