@@ -4,28 +4,29 @@ use anyhow::Result;
 use secrecy::SecretString;
 use structopt::StructOpt;
 use tl_scraper::TlClient;
-use tracing::info;
 
 #[derive(Debug, StructOpt)]
-enum Commands {
-    Auth(AuthOptions),
-}
-#[derive(Debug, StructOpt)]
-struct AuthOptions {
+struct Options {
     #[structopt(short = "i", long = "client-id")]
     client_id: String,
     #[structopt(short = "s", long = "client-secret")]
     client_secret: SecretString,
-    #[structopt(short = "t", long = "access-code")]
-    access_code: SecretString,
+    #[structopt(subcommand)]
+    command: Commands,
+}
+#[derive(Debug, StructOpt)]
+enum Commands {
+    Auth {
+        #[structopt(short = "t", long = "access-code")]
+        access_code: SecretString,
+    },
+    Info {},
 }
 
 const TOKEN_FILE: &str = "token.json";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cmd = Commands::from_args();
-
     tracing_log::LogTracer::init()?;
     tracing::subscriber::set_global_default(
         tracing_subscriber::FmtSubscriber::builder()
@@ -37,23 +38,35 @@ async fn main() -> Result<()> {
             .finish(),
     )?;
 
-    match cmd {
-        Commands::Auth(opts) => {
+    run().await?;
+
+    Ok(())
+}
+
+async fn run() -> Result<()> {
+    let opts = Options::from_args();
+    match opts.command {
+        Commands::Auth { access_code } => {
             let client_id = opts.client_id;
             let client_secret = opts.client_secret;
-            let access_code = opts.access_code;
             let client = reqwest::Client::new();
 
             let token_path = Path::new(TOKEN_FILE);
-            let tl =
-                TlClient::authenticate(client, token_path, client_id, client_secret, access_code)
-                    .await?;
+            let tl = TlClient::new(client, token_path, client_id, client_secret);
+            tl.authenticate(access_code).await?;
+        }
+        Commands::Info {} => {
+            let client_id = opts.client_id;
+            let client_secret = opts.client_secret;
+            let client = reqwest::Client::new();
+
+            let token_path = Path::new(TOKEN_FILE);
+            let tl = TlClient::new(client, token_path, client_id, client_secret);
 
             let info_response = tl.fetch_info().await?;
 
-            info!(json=?info_response, "Response");
+            println!("{:#?}", info_response);
         }
-    }
-
+    };
     Ok(())
 }
