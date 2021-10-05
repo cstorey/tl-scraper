@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
+use chrono::NaiveDate;
 use secrecy::SecretString;
 use structopt::StructOpt;
 use tl_scraper::TlClient;
@@ -24,6 +25,11 @@ enum Commands {
     Accounts {},
     AccountBalance {
         account_id: String,
+    },
+    AccountTx {
+        account_id: String,
+        from_date: NaiveDate,
+        to_date: NaiveDate,
     },
     Cards {},
 }
@@ -76,6 +82,17 @@ async fn run() -> Result<()> {
             let balance_response = tl.account_balance(&account_id).await?;
 
             println!("{:#?}", balance_response);
+        }
+        Commands::AccountTx {
+            account_id,
+            from_date,
+            to_date,
+        } => {
+            let response = tl
+                .account_transactions(&account_id, from_date, to_date)
+                .await?;
+
+            println!("{:#?}", response);
         }
         Commands::Cards {} => {
             let cards_response = tl.fetch_cards().await?;

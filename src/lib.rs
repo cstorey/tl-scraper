@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use authentication::Authenticator;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use hyper::Uri;
 use reqwest::{Client, RequestBuilder, Response};
 use rust_decimal::Decimal;
@@ -117,6 +117,43 @@ pub struct BalanceResult {
     pub update_timestamp: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransactionsResponse {
+    pub results: Vec<TransactionsResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransactionsResult {
+    // Is this _always_ present?
+    #[serde(rename = "transaction_id")]
+    pub transaction_id: Option<String>,
+    #[serde(rename = "normalised_provider_transaction_id")]
+    pub normalised_provider_transaction_id: String,
+    #[serde(rename = "provider_transaction_id")]
+    pub provider_transaction_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub description: String,
+    pub amount: Decimal,
+    pub currency: String,
+    #[serde(rename = "transaction_type")]
+    pub transaction_type: String,
+    #[serde(rename = "transaction_category")]
+    pub transaction_category: String,
+    #[serde(rename = "transaction_classification")]
+    pub transaction_classification: Vec<String>,
+    #[serde(rename = "merchant_name")]
+    pub merchant_name: Option<String>,
+    #[serde(rename = "running_balance")]
+    pub running_balance: Option<TransactionsRunningBalance>,
+    pub meta: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransactionsRunningBalance {
+    pub amount: Decimal,
+    pub currency: String,
+}
+
 pub struct TlClient {
     client: Client,
     auth: Authenticator,
@@ -193,6 +230,33 @@ impl TlClient {
         let response = perform_request(
             self.client
                 .get(&url.to_string())
+                .bearer_auth(access_token.expose_secret()),
+        )
+        .await?
+        .json()
+        .await?;
+        Ok(response)
+    }
+
+    pub async fn account_transactions(
+        &self,
+        account_id: &str,
+        from_date: NaiveDate,
+        to_date: NaiveDate,
+    ) -> Result<TransactionsResponse> {
+        let url = Uri::builder()
+            .scheme("https")
+            .authority(SANDBOX_API_HOST)
+            .path_and_query(format!(
+                "/data/v1/accounts/{account}/transactions",
+                account = urlencoding::encode(account_id)
+            ))
+            .build()?;
+        let access_token = self.auth.access_token().await?;
+        let response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .query(&[("from", &from_date), ("to", &to_date)])
                 .bearer_auth(access_token.expose_secret()),
         )
         .await?
