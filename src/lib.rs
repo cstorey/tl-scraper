@@ -53,27 +53,7 @@ const SANDBOX_API_HOST: &str = "api.truelayer-sandbox.com";
 const SANDBOX_AUTH_HOST: &str = "auth.truelayer-sandbox.com";
 const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
 
-const TOKEN_FILE: &str = "token.json";
-
-pub async fn run(
-    client_id: String,
-    client_secret: SecretString,
-    access_code: SecretString,
-) -> Result<()> {
-    let client = reqwest::Client::new();
-
-    let token_path = Path::new(TOKEN_FILE);
-    let token_response =
-        authenticate(&client, token_path, client_id, client_secret, access_code).await?;
-
-    let info_response = fetch_info(&client, &token_response).await?;
-
-    info!(json=?info_response, "Response");
-
-    Ok(())
-}
-
-async fn fetch_info(
+pub async fn fetch_info(
     client: &reqwest::Client,
     token_response: &FetchAccessTokenResponse,
 ) -> Result<UserInfoResponse> {
@@ -93,7 +73,7 @@ async fn fetch_info(
     Ok(info_response)
 }
 
-async fn authenticate(
+pub async fn authenticate(
     client: &reqwest::Client,
     token_path: &Path,
     client_id: String,
