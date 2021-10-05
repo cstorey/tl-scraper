@@ -22,6 +22,9 @@ enum Commands {
     },
     Info {},
     Accounts {},
+    AccountBalance {
+        account_id: String,
+    },
     Cards {},
 }
 
@@ -68,6 +71,11 @@ async fn run() -> Result<()> {
             let accounts_response = tl.fetch_accounts().await?;
 
             println!("{:#?}", accounts_response);
+        }
+        Commands::AccountBalance { account_id } => {
+            let balance_response = tl.account_balance(&account_id).await?;
+
+            println!("{:#?}", balance_response);
         }
         Commands::Cards {} => {
             let cards_response = tl.fetch_cards().await?;

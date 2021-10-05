@@ -5,6 +5,7 @@ use authentication::Authenticator;
 use chrono::{DateTime, Utc};
 use hyper::Uri;
 use reqwest::{Client, RequestBuilder, Response};
+use rust_decimal::Decimal;
 use secrecy::{ExposeSecret, Secret, Zeroize};
 use serde::{Deserialize, Serialize, Serializer};
 use tracing::{debug, error};
@@ -101,6 +102,21 @@ pub struct CardsProvider {
     pub display_name: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BalanceResponse {
+    pub results: Vec<BalanceResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BalanceResult {
+    pub currency: String,
+    pub available: Decimal,
+    pub current: Decimal,
+    pub overdraft: Option<Decimal>,
+    #[serde(rename = "update_timestamp")]
+    pub update_timestamp: DateTime<Utc>,
+}
+
 pub struct TlClient {
     client: Client,
     auth: Authenticator,
@@ -163,6 +179,28 @@ impl TlClient {
         .await?;
         Ok(info_response)
     }
+
+    pub async fn account_balance(&self, account_id: &str) -> Result<BalanceResponse> {
+        let url = Uri::builder()
+            .scheme("https")
+            .authority(SANDBOX_API_HOST)
+            .path_and_query(format!(
+                "/data/v1/accounts/{account}/balance",
+                account = urlencoding::encode(account_id)
+            ))
+            .build()?;
+        let access_token = self.auth.access_token().await?;
+        let response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .bearer_auth(access_token.expose_secret()),
+        )
+        .await?
+        .json()
+        .await?;
+        Ok(response)
+    }
+
     pub async fn fetch_cards(&self) -> Result<CardsResponse> {
         let url = Uri::builder()
             .scheme("https")
