@@ -13,9 +13,8 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tracing::{debug, info};
 
-use crate::{
-    perform_request, serialize_optional_secret, serialize_secret, REDIRECT_URI, SANDBOX_AUTH_HOST,
-};
+use crate::client::{REDIRECT_URI, SANDBOX_AUTH_HOST};
+use crate::{perform_request, serialize_optional_secret, serialize_secret};
 
 #[derive(Debug, Serialize, Deserialize)]
 enum GrantType {
