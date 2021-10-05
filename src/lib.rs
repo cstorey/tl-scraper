@@ -63,6 +63,43 @@ pub async fn run(
     let client = reqwest::Client::new();
 
     let token_path = Path::new(TOKEN_FILE);
+    let token_response =
+        authenticate(&client, token_path, client_id, client_secret, access_code).await?;
+
+    let info_response = fetch_info(&client, &token_response).await?;
+
+    info!(json=?info_response, "Response");
+
+    Ok(())
+}
+
+async fn fetch_info(
+    client: &reqwest::Client,
+    token_response: &FetchAccessTokenResponse,
+) -> Result<UserInfoResponse> {
+    let url = Uri::builder()
+        .scheme("https")
+        .authority(SANDBOX_API_HOST)
+        .path_and_query("/data/v1/info")
+        .build()?;
+    let info_response = perform_request(
+        client
+            .get(&url.to_string())
+            .bearer_auth(token_response.access_token.expose_secret()),
+    )
+    .await?
+    .json::<UserInfoResponse>()
+    .await?;
+    Ok(info_response)
+}
+
+async fn authenticate(
+    client: &reqwest::Client,
+    token_path: &Path,
+    client_id: String,
+    client_secret: Secret<String>,
+    access_code: Secret<String>,
+) -> Result<FetchAccessTokenResponse> {
     let token_response = if token_path.exists() {
         let data: FetchAccessTokenResponse = serde_json::from_reader(&File::open(token_path)?)?;
         data
@@ -97,25 +134,7 @@ pub async fn run(
         tmpf.persist(token_path)?;
         token_response
     };
-
-    let url = Uri::builder()
-        .scheme("https")
-        .authority(SANDBOX_API_HOST)
-        .path_and_query("/data/v1/info")
-        .build()?;
-
-    let info_response = perform_request(
-        client
-            .get(&url.to_string())
-            .bearer_auth(token_response.access_token.expose_secret()),
-    )
-    .await?
-    .json::<UserInfoResponse>()
-    .await?;
-
-    info!(json=?info_response, "Response");
-
-    Ok(())
+    Ok(token_response)
 }
 
 fn serialize_secret<T: Zeroize + Serialize, S: Serializer>(
