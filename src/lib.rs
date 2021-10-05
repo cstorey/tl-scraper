@@ -303,6 +303,33 @@ impl TlClient {
         .await?;
         Ok(response)
     }
+
+    pub async fn card_transactions(
+        &self,
+        card_id: &str,
+        from_date: NaiveDate,
+        to_date: NaiveDate,
+    ) -> Result<TransactionsResponse> {
+        let url = Uri::builder()
+            .scheme("https")
+            .authority(SANDBOX_API_HOST)
+            .path_and_query(format!(
+                "/data/v1/cards/{account}/transactions",
+                account = urlencoding::encode(card_id)
+            ))
+            .build()?;
+        let access_token = self.auth.access_token().await?;
+        let response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .query(&[("from", &from_date), ("to", &to_date)])
+                .bearer_auth(access_token.expose_secret()),
+        )
+        .await?
+        .json()
+        .await?;
+        Ok(response)
+    }
 }
 
 fn serialize_secret<T: Zeroize + Serialize, S: Serializer>(

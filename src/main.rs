@@ -35,6 +35,11 @@ enum Commands {
     CardBalance {
         account_id: String,
     },
+    CardTx {
+        account_id: String,
+        from_date: NaiveDate,
+        to_date: NaiveDate,
+    },
 }
 
 const TOKEN_FILE: &str = "token.json";
@@ -108,6 +113,17 @@ async fn run() -> Result<()> {
             let balance_response = tl.card_balance(&card_id).await?;
 
             println!("{:#?}", balance_response);
+        }
+        Commands::CardTx {
+            account_id,
+            from_date,
+            to_date,
+        } => {
+            let response = tl
+                .card_transactions(&account_id, from_date, to_date)
+                .await?;
+
+            println!("{:#?}", response);
         }
     };
     Ok(())
