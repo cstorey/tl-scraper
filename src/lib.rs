@@ -25,12 +25,12 @@ pub struct UserInfoResult {
     pub update_timestamp: DateTime<Utc>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountsResponse {
     pub results: Vec<AccountsResult>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountsResult {
     #[serde(rename = "update_timestamp")]
     pub update_timestamp: String,
@@ -46,7 +46,7 @@ pub struct AccountsResult {
     pub provider: AccountsProvider,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountNumber {
     pub iban: String,
     pub number: String,
@@ -56,10 +56,49 @@ pub struct AccountNumber {
     pub swift_bic: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountsProvider {
     #[serde(rename = "provider_id")]
     pub provider_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardsResponse {
+    pub results: Vec<CardsResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardsResult {
+    #[serde(rename = "account_id")]
+    pub account_id: String,
+    #[serde(rename = "card_network")]
+    pub card_network: String,
+    #[serde(rename = "card_type")]
+    pub card_type: String,
+    pub currency: String,
+    #[serde(rename = "display_name")]
+    pub display_name: String,
+    #[serde(rename = "partial_card_number")]
+    pub partial_card_number: String,
+    #[serde(rename = "name_on_card")]
+    pub name_on_card: String,
+    #[serde(rename = "valid_from")]
+    pub valid_from: Option<String>,
+    #[serde(rename = "valid_to")]
+    pub valid_to: Option<String>,
+    #[serde(rename = "update_timestamp")]
+    pub update_timestamp: DateTime<Utc>,
+    pub provider: CardsProvider,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardsProvider {
+    #[serde(rename = "provider_id")]
+    pub provider_id: String,
+    #[serde(rename = "logo_uri")]
+    pub logo_uri: Option<String>,
+    #[serde(rename = "display_name")]
+    pub display_name: Option<String>,
 }
 
 pub struct TlClient {
@@ -120,9 +159,26 @@ impl TlClient {
                 .bearer_auth(access_token.expose_secret()),
         )
         .await?
-        .json::<AccountsResponse>()
+        .json()
         .await?;
         Ok(info_response)
+    }
+    pub async fn fetch_cards(&self) -> Result<CardsResponse> {
+        let url = Uri::builder()
+            .scheme("https")
+            .authority(SANDBOX_API_HOST)
+            .path_and_query("/data/v1/cards")
+            .build()?;
+        let access_token = self.auth.access_token().await?;
+        let response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .bearer_auth(access_token.expose_secret()),
+        )
+        .await?
+        .json()
+        .await?;
+        Ok(response)
     }
 }
 

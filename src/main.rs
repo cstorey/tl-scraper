@@ -22,6 +22,7 @@ enum Commands {
     },
     Info {},
     Accounts {},
+    Cards {},
 }
 
 const TOKEN_FILE: &str = "token.json";
@@ -67,6 +68,11 @@ async fn run() -> Result<()> {
             let accounts_response = tl.fetch_accounts().await?;
 
             println!("{:#?}", accounts_response);
+        }
+        Commands::Cards {} => {
+            let cards_response = tl.fetch_cards().await?;
+
+            println!("{:#?}", cards_response);
         }
     };
     Ok(())
