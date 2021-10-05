@@ -7,7 +7,11 @@ use tl_scraper::TlClient;
 use tracing::info;
 
 #[derive(Debug, StructOpt)]
-struct Options {
+enum Commands {
+    Auth(AuthOptions),
+}
+#[derive(Debug, StructOpt)]
+struct AuthOptions {
     #[structopt(short = "i", long = "client-id")]
     client_id: String,
     #[structopt(short = "s", long = "client-secret")]
@@ -20,7 +24,7 @@ const TOKEN_FILE: &str = "token.json";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let opts = Options::from_args();
+    let cmd = Commands::from_args();
 
     tracing_log::LogTracer::init()?;
     tracing::subscriber::set_global_default(
@@ -33,18 +37,23 @@ async fn main() -> Result<()> {
             .finish(),
     )?;
 
-    let client_id = opts.client_id;
-    let client_secret = opts.client_secret;
-    let access_code = opts.access_code;
-    let client = reqwest::Client::new();
+    match cmd {
+        Commands::Auth(opts) => {
+            let client_id = opts.client_id;
+            let client_secret = opts.client_secret;
+            let access_code = opts.access_code;
+            let client = reqwest::Client::new();
 
-    let token_path = Path::new(TOKEN_FILE);
-    let tl =
-        TlClient::authenticate(client, token_path, client_id, client_secret, access_code).await?;
+            let token_path = Path::new(TOKEN_FILE);
+            let tl =
+                TlClient::authenticate(client, token_path, client_id, client_secret, access_code)
+                    .await?;
 
-    let info_response = tl.fetch_info().await?;
+            let info_response = tl.fetch_info().await?;
 
-    info!(json=?info_response, "Response");
+            info!(json=?info_response, "Response");
+        }
+    }
 
     Ok(())
 }
