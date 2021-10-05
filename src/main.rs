@@ -21,6 +21,7 @@ enum Commands {
         access_code: SecretString,
     },
     Info {},
+    Accounts {},
 }
 
 const TOKEN_FILE: &str = "token.json";
@@ -45,27 +46,27 @@ async fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     let opts = Options::from_args();
+
+    let client_id = opts.client_id;
+    let client_secret = opts.client_secret;
+    let client = reqwest::Client::new();
+
+    let token_path = Path::new(TOKEN_FILE);
+    let tl = TlClient::new(client, token_path, client_id, client_secret);
+
     match opts.command {
         Commands::Auth { access_code } => {
-            let client_id = opts.client_id;
-            let client_secret = opts.client_secret;
-            let client = reqwest::Client::new();
-
-            let token_path = Path::new(TOKEN_FILE);
-            let tl = TlClient::new(client, token_path, client_id, client_secret);
             tl.authenticate(access_code).await?;
         }
         Commands::Info {} => {
-            let client_id = opts.client_id;
-            let client_secret = opts.client_secret;
-            let client = reqwest::Client::new();
-
-            let token_path = Path::new(TOKEN_FILE);
-            let tl = TlClient::new(client, token_path, client_id, client_secret);
-
             let info_response = tl.fetch_info().await?;
 
             println!("{:#?}", info_response);
+        }
+        Commands::Accounts {} => {
+            let accounts_response = tl.fetch_accounts().await?;
+
+            println!("{:#?}", accounts_response);
         }
     };
     Ok(())
