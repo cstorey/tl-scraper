@@ -1,7 +1,4 @@
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-};
+use std::{fs::File, path::PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
@@ -14,7 +11,8 @@ use tl_scraper::{run_sync, TlClient};
 struct Options {
     #[structopt(short = "c", long = "client-credentials")]
     client_credentials: PathBuf,
-
+    #[structopt(short = "u", long = "user-token")]
+    user_token: PathBuf,
     #[structopt(subcommand)]
     command: Commands,
 }
@@ -57,8 +55,6 @@ enum Commands {
     },
 }
 
-const TOKEN_FILE: &str = "token.json";
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_log::LogTracer::init()?;
@@ -88,8 +84,12 @@ async fn run() -> Result<()> {
 
     let client = reqwest::Client::new();
 
-    let token_path = Path::new(TOKEN_FILE);
-    let tl = TlClient::new(client, token_path, client_creds.id, client_creds.secret);
+    let tl = TlClient::new(
+        client,
+        &opts.user_token,
+        client_creds.id,
+        client_creds.secret,
+    );
 
     match opts.command {
         Commands::Auth { access_code } => {
