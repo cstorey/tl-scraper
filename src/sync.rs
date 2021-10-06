@@ -77,9 +77,12 @@ async fn scrape_account_tx(
     info!(%account_id, ?from_date, ?to_date, "Fetch transactions");
     for (start_of_month, end_of_month) in months(from_date, to_date) {
         debug!(%account_id, ?start_of_month, ?end_of_month, "Scrape month");
-        let txes = tl
+        let mut txes = tl
             .account_transactions(account_id, start_of_month, end_of_month)
             .await?;
+
+        txes.results
+            .sort_by_key(|r| (r.timestamp, r.normalised_provider_transaction_id.clone()));
         write_atomically(
             &target_dir
                 .join("accounts")
@@ -125,9 +128,12 @@ async fn scrape_card_tx(
     info!("Fetch transactions");
     for (start_of_month, end_of_month) in months(from_date, to_date) {
         debug!("Scrape month");
-        let txes = tl
+        let mut txes = tl
             .card_transactions(account_id, start_of_month, end_of_month)
             .await?;
+
+        txes.results
+            .sort_by_key(|r| (r.timestamp, r.normalised_provider_transaction_id.clone()));
         write_atomically(
             &target_dir
                 .join("cards")
