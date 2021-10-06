@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use secrecy::SecretString;
 use serde::Deserialize;
 use structopt::StructOpt;
-use tl_scraper::{run_sync, TlClient};
+use tl_scraper::{run_sync, Environment, TlClient};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -13,6 +13,8 @@ struct Options {
     client_credentials: PathBuf,
     #[structopt(short = "u", long = "user-token")]
     user_token: PathBuf,
+    #[structopt(short = "l", long = "live")]
+    live: bool,
     #[structopt(subcommand)]
     command: Commands,
 }
@@ -86,6 +88,7 @@ async fn run() -> Result<()> {
 
     let tl = TlClient::new(
         client,
+        opts.truelayer_env(),
         &opts.user_token,
         client_creds.id,
         client_creds.secret,
@@ -153,4 +156,13 @@ async fn run() -> Result<()> {
         }
     };
     Ok(())
+}
+impl Options {
+    pub(crate) fn truelayer_env(&self) -> Environment {
+        if self.live {
+            Environment::Live
+        } else {
+            Environment::Sandbox
+        }
+    }
 }

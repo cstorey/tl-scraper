@@ -6,14 +6,13 @@ use std::{
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Duration, Utc};
-use hyper::Uri;
 use reqwest::Client;
 use secrecy::{Secret, SecretString};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tracing::{debug, info};
 
-use crate::client::{REDIRECT_URI, SANDBOX_AUTH_HOST};
+use crate::{client::REDIRECT_URI, Environment};
 use crate::{perform_request, serialize_optional_secret, serialize_secret};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,6 +54,7 @@ pub struct FetchAccessTokenResponse {
 
 pub(crate) struct Authenticator {
     client: Client,
+    env: Environment,
     token_path: PathBuf,
     client_id: String,
     client_secret: SecretString,
@@ -76,12 +76,14 @@ pub struct AuthData {
 impl Authenticator {
     pub(crate) fn new(
         client: Client,
+        env: Environment,
         token_path: PathBuf,
         client_id: String,
         client_secret: Secret<String>,
     ) -> Authenticator {
         Self {
             client,
+            env,
             token_path,
             client_id,
             client_secret,
@@ -125,9 +127,9 @@ impl Authenticator {
         &self,
         access_code: &Secret<String>,
     ) -> Result<FetchAccessTokenResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_AUTH_HOST)
+        let url = self
+            .env
+            .auth_url_builder()
             .path_and_query("/connect/token")
             .build()?;
         let fetch_access_token_request = FetchAccessTokenRequest {
@@ -147,9 +149,9 @@ impl Authenticator {
         Ok(token_response)
     }
     async fn refresh_access_token(&self, data: &AuthData) -> Result<FetchAccessTokenResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_AUTH_HOST)
+        let url = self
+            .env
+            .auth_url_builder()
             .path_and_query("/connect/token")
             .build()?;
         let fetch_access_token_request = FetchAccessTokenRequest {

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use chrono::{DateTime, NaiveDate, Utc};
-use hyper::Uri;
+use hyper::{http::uri, Uri};
 use reqwest::Client;
 use rust_decimal::Decimal;
 use secrecy::{ExposeSecret, Secret};
@@ -152,25 +152,41 @@ pub struct TransactionsRunningBalance {
     pub currency: String,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+pub enum Environment {
+    Sandbox,
+    Live,
+}
+
 pub struct TlClient {
     client: Client,
+    env: Environment,
     auth: Authenticator,
 }
 
 const SANDBOX_API_HOST: &str = "api.truelayer-sandbox.com";
-pub(crate) const SANDBOX_AUTH_HOST: &str = "auth.truelayer-sandbox.com";
+const SANDBOX_AUTH_HOST: &str = "auth.truelayer-sandbox.com";
+const LIVE_API_HOST: &str = "api.truelayer.com";
+const LIVE_AUTH_HOST: &str = "auth.truelayer.com";
 pub(crate) const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
 
 impl TlClient {
     pub fn new(
         client: reqwest::Client,
+        env: Environment,
         token_path: &Path,
         client_id: String,
         client_secret: Secret<String>,
     ) -> Self {
         let token_path = token_path.to_owned();
-        let auth = Authenticator::new(client.clone(), token_path, client_id, client_secret);
-        Self { client, auth }
+        let auth = Authenticator::new(
+            client.clone(),
+            env.clone(),
+            token_path,
+            client_id,
+            client_secret,
+        );
+        Self { client, env, auth }
     }
 
     pub async fn authenticate(&self, access_code: Secret<String>) -> Result<()> {
@@ -180,9 +196,9 @@ impl TlClient {
     }
 
     pub async fn fetch_info(&self) -> Result<UserInfoResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_API_HOST)
+        let url = self
+            .env
+            .api_url_builder()
             .path_and_query("/data/v1/info")
             .build()?;
         let access_token = self.auth.access_token().await?;
@@ -196,9 +212,9 @@ impl TlClient {
     }
 
     pub async fn fetch_accounts(&self) -> Result<AccountsResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_API_HOST)
+        let url = self
+            .env
+            .api_url_builder()
             .path_and_query("/data/v1/accounts")
             .build()?;
         let access_token = self.auth.access_token().await?;
@@ -212,9 +228,9 @@ impl TlClient {
     }
 
     pub async fn account_balance(&self, account_id: &str) -> Result<BalanceResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_API_HOST)
+        let url = self
+            .env
+            .api_url_builder()
             .path_and_query(format!(
                 "/data/v1/accounts/{account}/balance",
                 account = urlencoding::encode(account_id)
@@ -236,9 +252,9 @@ impl TlClient {
         from_date: NaiveDate,
         to_date: NaiveDate,
     ) -> Result<TransactionsResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_API_HOST)
+        let url = self
+            .env
+            .api_url_builder()
             .path_and_query(format!(
                 "/data/v1/accounts/{account}/transactions",
                 account = urlencoding::encode(account_id)
@@ -256,9 +272,9 @@ impl TlClient {
     }
 
     pub async fn fetch_cards(&self) -> Result<CardsResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_API_HOST)
+        let url = self
+            .env
+            .api_url_builder()
             .path_and_query("/data/v1/cards")
             .build()?;
         let access_token = self.auth.access_token().await?;
@@ -272,9 +288,9 @@ impl TlClient {
     }
 
     pub async fn card_balance(&self, card_id: &str) -> Result<BalanceResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_API_HOST)
+        let url = self
+            .env
+            .api_url_builder()
             .path_and_query(format!(
                 "/data/v1/cards/{account}/balance",
                 account = urlencoding::encode(card_id)
@@ -296,9 +312,9 @@ impl TlClient {
         from_date: NaiveDate,
         to_date: NaiveDate,
     ) -> Result<TransactionsResponse> {
-        let url = Uri::builder()
-            .scheme("https")
-            .authority(SANDBOX_API_HOST)
+        let url = self
+            .env
+            .api_url_builder()
             .path_and_query(format!(
                 "/data/v1/cards/{account}/transactions",
                 account = urlencoding::encode(card_id)
@@ -313,5 +329,23 @@ impl TlClient {
         )
         .await?;
         Ok(response)
+    }
+}
+
+impl Environment {
+    fn api_url_builder(&self) -> uri::Builder {
+        let host = match self {
+            Environment::Sandbox => SANDBOX_API_HOST,
+            Environment::Live => LIVE_API_HOST,
+        };
+        Uri::builder().scheme("https").authority(host)
+    }
+
+    pub(crate) fn auth_url_builder(&self) -> uri::Builder {
+        let host = match self {
+            Environment::Sandbox => SANDBOX_AUTH_HOST,
+            Environment::Live => LIVE_AUTH_HOST,
+        };
+        Uri::builder().scheme("https").authority(host)
     }
 }
