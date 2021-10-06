@@ -1,20 +1,30 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use secrecy::SecretString;
+use serde::Deserialize;
 use structopt::StructOpt;
 use tl_scraper::{run_sync, TlClient};
 
 #[derive(Debug, StructOpt)]
 struct Options {
-    #[structopt(short = "i", long = "client-id")]
-    client_id: String,
-    #[structopt(short = "s", long = "client-secret")]
-    client_secret: SecretString,
+    #[structopt(short = "c", long = "client-credentials")]
+    client_credentials: PathBuf,
+
     #[structopt(subcommand)]
     command: Commands,
 }
+
+#[derive(Debug, Deserialize)]
+struct ClientCreds {
+    id: String,
+    secret: SecretString,
+}
+
 #[derive(Debug, StructOpt)]
 enum Commands {
     Auth {
@@ -70,12 +80,16 @@ async fn main() -> Result<()> {
 async fn run() -> Result<()> {
     let opts = Options::from_args();
 
-    let client_id = opts.client_id;
-    let client_secret = opts.client_secret;
+    let client_creds: ClientCreds =
+        serde_json::from_reader(File::open(&opts.client_credentials).with_context(|| {
+            format!("Opening client credentials: {:?}", opts.client_credentials)
+        })?)
+        .with_context(|| format!("Decoding client credentials: {:?}", opts.client_credentials))?;
+
     let client = reqwest::Client::new();
 
     let token_path = Path::new(TOKEN_FILE);
-    let tl = TlClient::new(client, token_path, client_id, client_secret);
+    let tl = TlClient::new(client, token_path, client_creds.id, client_creds.secret);
 
     match opts.command {
         Commands::Auth { access_code } => {
