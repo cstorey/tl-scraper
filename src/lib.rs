@@ -6,8 +6,10 @@ use tracing::{debug, error};
 
 mod authentication;
 mod client;
+mod sync;
 
 pub use client::TlClient;
+pub use sync::run_sync;
 
 fn serialize_secret<T: Zeroize + Serialize, S: Serializer>(
     secret: &Secret<T>,

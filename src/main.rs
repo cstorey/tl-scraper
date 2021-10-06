@@ -1,10 +1,10 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use chrono::NaiveDate;
 use secrecy::SecretString;
 use structopt::StructOpt;
-use tl_scraper::TlClient;
+use tl_scraper::{run_sync, TlClient};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -39,6 +39,11 @@ enum Commands {
         account_id: String,
         from_date: NaiveDate,
         to_date: NaiveDate,
+    },
+    Sync {
+        from_date: NaiveDate,
+        to_date: NaiveDate,
+        target_dir: PathBuf,
     },
 }
 
@@ -124,6 +129,13 @@ async fn run() -> Result<()> {
                 .await?;
 
             println!("{:#?}", response);
+        }
+        Commands::Sync {
+            from_date,
+            to_date,
+            target_dir,
+        } => {
+            run_sync(tl, from_date, to_date, &target_dir).await?;
         }
     };
     Ok(())
