@@ -1,3 +1,4 @@
 /target
 token*.json
-client-creds.json
+client*.json
+!client-creds.sample.json
