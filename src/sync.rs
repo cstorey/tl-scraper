@@ -5,7 +5,7 @@ use chrono::{Datelike, NaiveDate};
 use serde::Serialize;
 use tempfile::NamedTempFile;
 use tokio::task::block_in_place;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::{
     client::{AccountsResult, CardsResult},
@@ -81,6 +81,11 @@ async fn scrape_account_tx(
             .account_transactions(account_id, start_of_month, end_of_month)
             .await?;
 
+        if txes.results.is_empty() {
+            warn!("No results for month found");
+            continue;
+        }
+
         txes.results
             .sort_by_key(|r| (r.timestamp, r.normalised_provider_transaction_id.clone()));
         write_atomically(
@@ -132,8 +137,14 @@ async fn scrape_card_tx(
             .card_transactions(account_id, start_of_month, end_of_month)
             .await?;
 
+        if txes.results.is_empty() {
+            warn!("No results for month found");
+            continue;
+        }
+
         txes.results
             .sort_by_key(|r| (r.timestamp, r.normalised_provider_transaction_id.clone()));
+
         write_atomically(
             &target_dir
                 .join("cards")
