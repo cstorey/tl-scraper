@@ -5,7 +5,7 @@ use chrono::{Datelike, NaiveDate};
 use serde::Serialize;
 use tempfile::NamedTempFile;
 use tokio::task::block_in_place;
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 
 use crate::{
     client::{AccountsResult, CardsResult},
@@ -23,33 +23,36 @@ pub async fn run_sync(
     let accounts = scrape_accounts(&tl, target_dir).await?;
 
     for account in accounts {
-        scrape_account(&tl, target_dir, &account.account_id).await?;
+        scrape_account_balance(&tl, target_dir, &account.account_id).await?;
         scrape_account_tx(&tl, target_dir, &account.account_id, from_date, to_date).await?;
     }
 
     let cards = scrape_cards(&tl, target_dir).await?;
 
     for card in cards {
-        scrape_card(&tl, target_dir, &card.account_id).await?;
+        scrape_card_balance(&tl, target_dir, &card.account_id).await?;
         scrape_card_tx(&tl, target_dir, &card.account_id, from_date, to_date).await?;
     }
 
     Ok(())
 }
 
+#[instrument(skip(tl, target_dir))]
 async fn scrape_info(tl: &TlClient, target_dir: &Path) -> Result<()> {
     let user_info = tl.fetch_info().await?;
     write_atomically(&target_dir.join("user-info.json"), &user_info).await?;
     Ok(())
 }
 
+#[instrument(skip(tl, target_dir))]
 async fn scrape_accounts(tl: &TlClient, target_dir: &Path) -> Result<Vec<AccountsResult>> {
     let accounts = tl.fetch_accounts().await?;
     write_atomically(&target_dir.join("accounts.json"), &accounts).await?;
     Ok(accounts.results)
 }
 
-async fn scrape_account(tl: &TlClient, target_dir: &Path, account_id: &str) -> Result<()> {
+#[instrument(skip(tl, target_dir))]
+async fn scrape_account_balance(tl: &TlClient, target_dir: &Path, account_id: &str) -> Result<()> {
     info!(%account_id, "Fetch balance");
     let bal = tl.account_balance(account_id).await?;
     write_atomically(
@@ -63,6 +66,7 @@ async fn scrape_account(tl: &TlClient, target_dir: &Path, account_id: &str) -> R
     Ok(())
 }
 
+#[instrument(skip(tl, target_dir))]
 async fn scrape_account_tx(
     tl: &TlClient,
     target_dir: &Path,
@@ -88,14 +92,16 @@ async fn scrape_account_tx(
     Ok(())
 }
 
+#[instrument(skip(tl, target_dir))]
 async fn scrape_cards(tl: &TlClient, target_dir: &Path) -> Result<Vec<CardsResult>> {
     let cards = tl.fetch_cards().await?;
     write_atomically(&target_dir.join("cards.json"), &cards).await?;
     Ok(cards.results)
 }
 
-async fn scrape_card(tl: &TlClient, target_dir: &Path, account_id: &str) -> Result<()> {
-    info!(%account_id, "Fetch balance");
+#[instrument(skip(tl, target_dir))]
+async fn scrape_card_balance(tl: &TlClient, target_dir: &Path, account_id: &str) -> Result<()> {
+    info!("Fetch balance");
     let bal = tl.card_balance(account_id).await?;
     write_atomically(
         &target_dir
@@ -108,6 +114,7 @@ async fn scrape_card(tl: &TlClient, target_dir: &Path, account_id: &str) -> Resu
     Ok(())
 }
 
+#[instrument(skip(tl, target_dir))]
 async fn scrape_card_tx(
     tl: &TlClient,
     target_dir: &Path,
@@ -115,9 +122,9 @@ async fn scrape_card_tx(
     from_date: NaiveDate,
     to_date: NaiveDate,
 ) -> Result<()> {
-    info!(%account_id, ?from_date, ?to_date, "Fetch transactions");
+    info!("Fetch transactions");
     for (start_of_month, end_of_month) in months(from_date, to_date) {
-        debug!(%account_id, ?start_of_month, ?end_of_month, "Scrape month");
+        debug!("Scrape month");
         let txes = tl
             .card_transactions(account_id, start_of_month, end_of_month)
             .await?;
