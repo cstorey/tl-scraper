@@ -53,6 +53,8 @@ enum Commands {
     Sync {
         from_date: NaiveDate,
         to_date: NaiveDate,
+        #[structopt(short = "i", long = "scrape_info")]
+        scrape_info: bool,
         target_dir: PathBuf,
     },
 }
@@ -150,9 +152,10 @@ async fn run() -> Result<()> {
         Commands::Sync {
             from_date,
             to_date,
+            scrape_info,
             target_dir,
         } => {
-            run_sync(tl, from_date, to_date, &target_dir).await?;
+            run_sync(tl, from_date, to_date, scrape_info, &target_dir).await?;
         }
     };
     Ok(())

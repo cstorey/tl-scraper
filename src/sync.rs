@@ -16,9 +16,12 @@ pub async fn run_sync(
     tl: TlClient,
     from_date: NaiveDate,
     to_date: NaiveDate,
+    should_scrape_info: bool,
     target_dir: &Path,
 ) -> Result<()> {
-    scrape_info(&tl, target_dir).await?;
+    if should_scrape_info {
+        scrape_info(&tl, target_dir).await?;
+    }
 
     let accounts = scrape_accounts(&tl, target_dir).await?;
 
