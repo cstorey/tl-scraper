@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{ErrorKind, Write},
+    io::{stdout, ErrorKind, Write},
     path::PathBuf,
 };
 
@@ -49,7 +49,7 @@ pub struct FetchAccessTokenResponse {
     token_type: String,
     #[serde(serialize_with = "serialize_secret")]
     refresh_token: SecretString,
-    scope: String,
+    scope: Option<String>,
 }
 
 pub(crate) struct Authenticator {
@@ -70,7 +70,7 @@ pub struct AuthData {
     token_type: String,
     #[serde(serialize_with = "serialize_secret")]
     refresh_token: SecretString,
-    scope: String,
+    scope: Option<String>,
 }
 
 impl Authenticator {
