@@ -32,6 +32,7 @@ pub async fn run_sync(
         if false {
             // Only available when you've _recently_ authenticated.
             scrape_account_standing_orders(&tl, target_dir, &account).await?;
+            scrape_account_direct_debits(&tl, target_dir, &account).await?;
         }
     }
 
@@ -106,6 +107,25 @@ async fn scrape_account_standing_orders(
 ) -> Result<()> {
     info!("Fetch standing orders");
     let bal = tl.account_standing_orders(&account.account_id).await?;
+    let path = &target_dir
+        .join("accounts")
+        .join(&format!(
+            "{} {}",
+            account.account_number.sort_code, account.account_number.number
+        ))
+        .join("standing-orders.json");
+    write_atomically(path, &bal).await?;
+    Ok(())
+}
+
+#[instrument(skip(tl, target_dir, account), fields(account_id=%account.account_id))]
+async fn scrape_account_direct_debits(
+    tl: &TlClient,
+    target_dir: &Path,
+    account: &AccountsResult,
+) -> Result<()> {
+    info!("Fetch direct debits");
+    let bal = tl.account_direct_debits(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
         .join(&format!(

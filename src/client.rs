@@ -140,6 +140,12 @@ pub struct StandingOrderResult {
     inner: serde_json::Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DirectDebitResult {
+    #[serde(flatten)]
+    inner: serde_json::Value,
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum Environment {
     Sandbox,
@@ -262,6 +268,28 @@ impl TlClient {
             .api_url_builder()
             .path_and_query(format!(
                 "/data/v1/accounts/{account}/standing_orders",
+                account = urlencoding::encode(account_id)
+            ))
+            .build()?;
+        let access_token = self.auth.access_token().await?;
+        let response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .bearer_auth(access_token.expose_secret()),
+        )
+        .await?;
+        Ok(response)
+    }
+
+    pub async fn account_direct_debits(
+        &self,
+        account_id: &str,
+    ) -> Result<Response<DirectDebitResult>> {
+        let url = self
+            .env
+            .api_url_builder()
+            .path_and_query(format!(
+                "/data/v1/accounts/{account}/direct_debits",
                 account = urlencoding::encode(account_id)
             ))
             .build()?;
