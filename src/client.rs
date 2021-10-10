@@ -116,6 +116,11 @@ pub struct BalanceResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingResponse {
+    pub results: Vec<TransactionsResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TransactionsResponse {
     pub results: Vec<TransactionsResult>,
 }
@@ -246,6 +251,25 @@ impl TlClient {
         Ok(response)
     }
 
+    pub async fn account_pending(&self, account_id: &str) -> Result<PendingResponse> {
+        let url = self
+            .env
+            .api_url_builder()
+            .path_and_query(format!(
+                "/data/v1/accounts/{account}/transactions/pending",
+                account = urlencoding::encode(account_id)
+            ))
+            .build()?;
+        let access_token = self.auth.access_token().await?;
+        let response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .bearer_auth(access_token.expose_secret()),
+        )
+        .await?;
+        Ok(response)
+    }
+
     pub async fn account_transactions(
         &self,
         account_id: &str,
@@ -294,6 +318,25 @@ impl TlClient {
             .path_and_query(format!(
                 "/data/v1/cards/{account}/balance",
                 account = urlencoding::encode(card_id)
+            ))
+            .build()?;
+        let access_token = self.auth.access_token().await?;
+        let response = perform_request(
+            self.client
+                .get(&url.to_string())
+                .bearer_auth(access_token.expose_secret()),
+        )
+        .await?;
+        Ok(response)
+    }
+
+    pub async fn card_pending(&self, account_id: &str) -> Result<PendingResponse> {
+        let url = self
+            .env
+            .api_url_builder()
+            .path_and_query(format!(
+                "/data/v1/cards/{account}/transactions/pending",
+                account = urlencoding::encode(account_id)
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;

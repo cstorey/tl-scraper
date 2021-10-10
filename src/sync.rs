@@ -27,6 +27,7 @@ pub async fn run_sync(
 
     for account in accounts {
         scrape_account_balance(&tl, target_dir, &account).await?;
+        scrape_account_pending(&tl, target_dir, &account).await?;
         scrape_account_tx(&tl, target_dir, &account, from_date, to_date).await?;
     }
 
@@ -34,6 +35,7 @@ pub async fn run_sync(
 
     for card in cards {
         scrape_card_balance(&tl, target_dir, &card.account_id).await?;
+        scrape_card_pending(&tl, target_dir, &card.account_id).await?;
         scrape_card_tx(&tl, target_dir, &card.account_id, from_date, to_date).await?;
     }
 
@@ -69,6 +71,25 @@ async fn scrape_account_balance(
             account.account_number.sort_code, account.account_number.number
         ))
         .join("balance.json");
+    write_atomically(path, &bal).await?;
+    Ok(())
+}
+
+#[instrument(skip(tl, target_dir, account), fields(account_id=%account.account_id))]
+async fn scrape_account_pending(
+    tl: &TlClient,
+    target_dir: &Path,
+    account: &AccountsResult,
+) -> Result<()> {
+    info!("Fetch pending transactions");
+    let bal = tl.account_pending(&account.account_id).await?;
+    let path = &target_dir
+        .join("accounts")
+        .join(&format!(
+            "{} {}",
+            account.account_number.sort_code, account.account_number.number
+        ))
+        .join("pending.json");
     write_atomically(path, &bal).await?;
     Ok(())
 }
@@ -129,6 +150,18 @@ async fn scrape_card_balance(tl: &TlClient, target_dir: &Path, account_id: &str)
         &bal,
     )
     .await?;
+    Ok(())
+}
+
+#[instrument(skip(tl, target_dir, account_id), fields(account_id=%account_id))]
+async fn scrape_card_pending(tl: &TlClient, target_dir: &Path, account_id: &str) -> Result<()> {
+    info!("Fetch pending transactions");
+    let bal = tl.card_pending(account_id).await?;
+    let path = &target_dir
+        .join("cards")
+        .join(&account_id)
+        .join("pending.json");
+    write_atomically(path, &bal).await?;
     Ok(())
 }
 
