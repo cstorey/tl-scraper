@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::{authentication::Authenticator, perform_request};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct UserInfoResponse {
+pub struct Response<T> {
     #[serde(rename = "results")]
-    results: Vec<UserInfoResult>,
+    pub results: Vec<T>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,11 +22,6 @@ pub struct UserInfoResult {
     pub full_name: String,
     #[serde(rename = "update_timestamp")]
     pub update_timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccountsResponse {
-    pub results: Vec<AccountsResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,11 +54,6 @@ pub struct AccountNumber {
 pub struct AccountsProvider {
     #[serde(rename = "provider_id")]
     pub provider_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CardsResponse {
-    pub results: Vec<CardsResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -100,10 +90,7 @@ pub struct CardsProvider {
     pub display_name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BalanceResponse {
-    pub results: Vec<BalanceResult>,
-}
+type BalanceResponse = Response<BalanceResult>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BalanceResult {
@@ -113,16 +100,6 @@ pub struct BalanceResult {
     pub overdraft: Option<Decimal>,
     #[serde(rename = "update_timestamp")]
     pub update_timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PendingResponse {
-    pub results: Vec<TransactionsResult>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TransactionsResponse {
-    pub results: Vec<TransactionsResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -200,7 +177,7 @@ impl TlClient {
         Ok(())
     }
 
-    pub async fn fetch_info(&self) -> Result<UserInfoResponse> {
+    pub async fn fetch_info(&self) -> Result<Response<UserInfoResult>> {
         let url = self
             .env
             .api_url_builder()
@@ -216,7 +193,7 @@ impl TlClient {
         Ok(info_response)
     }
 
-    pub async fn fetch_accounts(&self) -> Result<AccountsResponse> {
+    pub async fn fetch_accounts(&self) -> Result<Response<AccountsResult>> {
         let url = self
             .env
             .api_url_builder()
@@ -251,7 +228,7 @@ impl TlClient {
         Ok(response)
     }
 
-    pub async fn account_pending(&self, account_id: &str) -> Result<PendingResponse> {
+    pub async fn account_pending(&self, account_id: &str) -> Result<Response<TransactionsResult>> {
         let url = self
             .env
             .api_url_builder()
@@ -275,7 +252,7 @@ impl TlClient {
         account_id: &str,
         from_date: NaiveDate,
         to_date: NaiveDate,
-    ) -> Result<TransactionsResponse> {
+    ) -> Result<Response<TransactionsResult>> {
         let url = self
             .env
             .api_url_builder()
@@ -295,7 +272,7 @@ impl TlClient {
         Ok(response)
     }
 
-    pub async fn fetch_cards(&self) -> Result<CardsResponse> {
+    pub async fn fetch_cards(&self) -> Result<Response<CardsResult>> {
         let url = self
             .env
             .api_url_builder()
@@ -330,7 +307,7 @@ impl TlClient {
         Ok(response)
     }
 
-    pub async fn card_pending(&self, account_id: &str) -> Result<PendingResponse> {
+    pub async fn card_pending(&self, account_id: &str) -> Result<Response<TransactionsResult>> {
         let url = self
             .env
             .api_url_builder()
@@ -354,7 +331,7 @@ impl TlClient {
         card_id: &str,
         from_date: NaiveDate,
         to_date: NaiveDate,
-    ) -> Result<TransactionsResponse> {
+    ) -> Result<Response<TransactionsResult>> {
         let url = self
             .env
             .api_url_builder()
