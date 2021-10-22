@@ -157,8 +157,7 @@ async fn scrape_account_tx(
             continue;
         }
 
-        txes.results
-            .sort_by_key(|r| (r.timestamp, r.normalised_provider_transaction_id.clone()));
+        txes.results.reverse();
         write_atomically(
             &target_dir
                 .join("accounts")
@@ -228,8 +227,7 @@ async fn scrape_card_tx(
             continue;
         }
 
-        txes.results
-            .sort_by_key(|r| (r.timestamp, r.normalised_provider_transaction_id.clone()));
+        txes.results.reverse();
 
         write_atomically(
             &target_dir
