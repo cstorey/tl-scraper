@@ -50,14 +50,14 @@ pub async fn run_sync(
 #[instrument(skip(tl, target_dir))]
 async fn scrape_info(tl: &TlClient, target_dir: &Path) -> Result<()> {
     let user_info = tl.fetch_info().await?;
-    write_atomically(&target_dir.join("user-info.json"), &user_info).await?;
+    write_jsons_atomically(&target_dir.join("user-info.jsons"), &user_info.results).await?;
     Ok(())
 }
 
 #[instrument(skip(tl, target_dir))]
 async fn scrape_accounts(tl: &TlClient, target_dir: &Path) -> Result<Vec<AccountsResult>> {
     let accounts = tl.fetch_accounts().await?;
-    write_atomically(&target_dir.join("accounts.json"), &accounts).await?;
+    write_jsons_atomically(&target_dir.join("accounts.jsons"), &accounts.results).await?;
     Ok(accounts.results)
 }
 
@@ -75,8 +75,8 @@ async fn scrape_account_balance(
             "{} {}",
             account.account_number.sort_code, account.account_number.number
         ))
-        .join("balance.json");
-    write_atomically(path, &bal).await?;
+        .join("balance.jsons");
+    write_jsons_atomically(path, &bal.results).await?;
     Ok(())
 }
 
@@ -94,8 +94,8 @@ async fn scrape_account_pending(
             "{} {}",
             account.account_number.sort_code, account.account_number.number
         ))
-        .join("pending.json");
-    write_atomically(path, &bal).await?;
+        .join("pending.jsons");
+    write_jsons_atomically(path, &bal.results).await?;
     Ok(())
 }
 
@@ -113,8 +113,8 @@ async fn scrape_account_standing_orders(
             "{} {}",
             account.account_number.sort_code, account.account_number.number
         ))
-        .join("standing-orders.json");
-    write_atomically(path, &bal).await?;
+        .join("standing-orders.jsons");
+    write_jsons_atomically(path, &bal.results).await?;
     Ok(())
 }
 
@@ -132,8 +132,8 @@ async fn scrape_account_direct_debits(
             "{} {}",
             account.account_number.sort_code, account.account_number.number
         ))
-        .join("standing-orders.json");
-    write_atomically(path, &bal).await?;
+        .join("standing-orders.jsons");
+    write_jsons_atomically(path, &bal.results).await?;
     Ok(())
 }
 
@@ -158,15 +158,15 @@ async fn scrape_account_tx(
         }
 
         txes.results.reverse();
-        write_atomically(
+        write_jsons_atomically(
             &target_dir
                 .join("accounts")
                 .join(&format!(
                     "{} {}",
                     account.account_number.sort_code, account.account_number.number
                 ))
-                .join(start_of_month.format("%Y-%m.json").to_string()),
-            &txes,
+                .join(start_of_month.format("%Y-%m.jsons").to_string()),
+            &txes.results,
         )
         .await?;
     }
@@ -176,7 +176,7 @@ async fn scrape_account_tx(
 #[instrument(skip(tl, target_dir))]
 async fn scrape_cards(tl: &TlClient, target_dir: &Path) -> Result<Vec<CardsResult>> {
     let cards = tl.fetch_cards().await?;
-    write_atomically(&target_dir.join("cards.json"), &cards).await?;
+    write_jsons_atomically(&target_dir.join("cards.jsons"), &cards.results).await?;
     Ok(cards.results)
 }
 
@@ -184,12 +184,12 @@ async fn scrape_cards(tl: &TlClient, target_dir: &Path) -> Result<Vec<CardsResul
 async fn scrape_card_balance(tl: &TlClient, target_dir: &Path, account_id: &str) -> Result<()> {
     info!("Fetch balance");
     let bal = tl.card_balance(account_id).await?;
-    write_atomically(
+    write_jsons_atomically(
         &target_dir
             .join("cards")
             .join(&account_id)
-            .join("balance.json"),
-        &bal,
+            .join("balance.jsons"),
+        &bal.results,
     )
     .await?;
     Ok(())
@@ -202,8 +202,8 @@ async fn scrape_card_pending(tl: &TlClient, target_dir: &Path, account_id: &str)
     let path = &target_dir
         .join("cards")
         .join(&account_id)
-        .join("pending.json");
-    write_atomically(path, &bal).await?;
+        .join("pending.jsons");
+    write_jsons_atomically(path, &bal.results).await?;
     Ok(())
 }
 
@@ -229,12 +229,12 @@ async fn scrape_card_tx(
 
         txes.results.reverse();
 
-        write_atomically(
+        write_jsons_atomically(
             &target_dir
                 .join("cards")
                 .join(account_id)
-                .join(start_of_month.format("%Y-%m.json").to_string()),
-            &txes,
+                .join(start_of_month.format("%Y-%m.jsons").to_string()),
+            &txes.results,
         )
         .await?;
     }
@@ -257,12 +257,19 @@ fn months(
         .zip(month_ends)
 }
 
-async fn write_atomically<T: Serialize>(path: &Path, data: &T) -> Result<()> {
+async fn write_jsons_atomically<T: Serialize>(path: &Path, data: &[T]) -> Result<()> {
     block_in_place(|| {
         let dir = path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(dir)?;
         let mut tmpf = NamedTempFile::new_in(dir)?;
-        serde_json::to_writer_pretty(&mut tmpf, &data)?;
+        let mut buf = Vec::new();
+        for item in data {
+            serde_json::to_writer(&mut buf, &item)?;
+            assert!(!buf.contains(&b'\n'));
+            tmpf.write_all(&buf)?;
+            tmpf.write_all(b"\n")?;
+            buf.clear();
+        }
         tmpf.as_file_mut().flush()?;
         tmpf.persist(path)?;
         debug!(?path, "Stored data");
