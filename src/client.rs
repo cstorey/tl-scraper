@@ -20,14 +20,10 @@ pub struct Response<T> {
 pub struct UserInfoResult {
     #[serde(rename = "full_name")]
     pub full_name: String,
-    #[serde(rename = "update_timestamp")]
-    pub update_timestamp: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountsResult {
-    #[serde(rename = "update_timestamp")]
-    pub update_timestamp: String,
     #[serde(rename = "account_id")]
     pub account_id: String,
     #[serde(rename = "account_type")]
@@ -75,8 +71,6 @@ pub struct CardsResult {
     pub valid_from: Option<String>,
     #[serde(rename = "valid_to")]
     pub valid_to: Option<String>,
-    #[serde(rename = "update_timestamp")]
-    pub update_timestamp: DateTime<Utc>,
     pub provider: CardsProvider,
 }
 
@@ -98,8 +92,6 @@ pub struct BalanceResult {
     pub available: Decimal,
     pub current: Decimal,
     pub overdraft: Option<Decimal>,
-    #[serde(rename = "update_timestamp")]
-    pub update_timestamp: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
