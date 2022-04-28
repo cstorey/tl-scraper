@@ -118,6 +118,8 @@ pub struct TransactionsResult {
     #[serde(rename = "running_balance")]
     pub running_balance: Option<TransactionsRunningBalance>,
     pub meta: serde_json::Value,
+    #[serde(flatten)]
+    pub other: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
