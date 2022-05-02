@@ -9,7 +9,7 @@ mod client;
 mod sync;
 
 pub use client::{Environment, TlClient};
-pub use sync::run_sync;
+pub use sync::{sync_accounts, sync_cards, sync_info};
 
 fn serialize_secret<T: Zeroize + Serialize, S: Serializer>(
     secret: &Secret<T>,

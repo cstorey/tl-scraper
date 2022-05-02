@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use secrecy::SecretString;
 use serde::Deserialize;
 use structopt::StructOpt;
-use tl_scraper::{run_sync, Environment, TlClient};
+use tl_scraper::{Environment, TlClient};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -53,8 +53,12 @@ enum Commands {
     Sync {
         from_date: NaiveDate,
         to_date: NaiveDate,
-        #[structopt(short = "i", long = "scrape_info")]
+        #[structopt(short = "i", long = "info")]
         scrape_info: bool,
+        #[structopt(short = "a", long = "accounts")]
+        scrape_accounts: bool,
+        #[structopt(short = "c", long = "cards")]
+        scrape_cards: bool,
         target_dir: PathBuf,
     },
 }
@@ -153,9 +157,21 @@ async fn run() -> Result<()> {
             from_date,
             to_date,
             scrape_info,
+            scrape_accounts: accounts,
+            scrape_cards: cards,
             target_dir,
         } => {
-            run_sync(tl, from_date, to_date, scrape_info, &target_dir).await?;
+            if scrape_info {
+                tl_scraper::sync_info(&tl, &target_dir).await?;
+            }
+
+            if accounts {
+                tl_scraper::sync_accounts(&tl, &target_dir, from_date, to_date).await?;
+            }
+
+            if cards {
+                tl_scraper::sync_cards(tl, &target_dir, from_date, to_date).await?;
+            }
         }
     };
     Ok(())

@@ -12,43 +12,44 @@ use crate::{
     TlClient,
 };
 
-pub async fn run_sync(
-    tl: TlClient,
+pub async fn sync_accounts(
+    tl: &TlClient,
+    target_dir: &Path,
     from_date: NaiveDate,
     to_date: NaiveDate,
-    should_scrape_info: bool,
-    target_dir: &Path,
-) -> Result<()> {
-    if should_scrape_info {
-        scrape_info(&tl, target_dir).await?;
-    }
-
-    let accounts = scrape_accounts(&tl, target_dir).await?;
-
+) -> Result<(), anyhow::Error> {
+    let accounts = scrape_accounts(tl, target_dir).await?;
     for account in accounts {
-        scrape_account_balance(&tl, target_dir, &account).await?;
-        scrape_account_pending(&tl, target_dir, &account).await?;
-        scrape_account_tx(&tl, target_dir, &account, from_date, to_date).await?;
+        scrape_account_balance(tl, target_dir, &account).await?;
+        scrape_account_pending(tl, target_dir, &account).await?;
+        scrape_account_tx(tl, target_dir, &account, from_date, to_date).await?;
+
         if false {
             // Only available when you've _recently_ authenticated.
-            scrape_account_standing_orders(&tl, target_dir, &account).await?;
-            scrape_account_direct_debits(&tl, target_dir, &account).await?;
+            scrape_account_standing_orders(tl, target_dir, &account).await?;
+            scrape_account_direct_debits(tl, target_dir, &account).await?;
         }
     }
+    Ok(())
+}
 
+pub async fn sync_cards(
+    tl: TlClient,
+    target_dir: &Path,
+    from_date: NaiveDate,
+    to_date: NaiveDate,
+) -> Result<(), anyhow::Error> {
     let cards = scrape_cards(&tl, target_dir).await?;
-
     for card in cards {
         scrape_card_balance(&tl, target_dir, &card.account_id).await?;
         scrape_card_pending(&tl, target_dir, &card.account_id).await?;
         scrape_card_tx(&tl, target_dir, &card.account_id, from_date, to_date).await?;
     }
-
     Ok(())
 }
 
 #[instrument(skip(tl, target_dir))]
-async fn scrape_info(tl: &TlClient, target_dir: &Path) -> Result<()> {
+pub async fn sync_info(tl: &TlClient, target_dir: &Path) -> Result<()> {
     let user_info = tl.fetch_info().await?;
     write_jsons_atomically(&target_dir.join("user-info.jsons"), &user_info.results).await?;
     Ok(())
