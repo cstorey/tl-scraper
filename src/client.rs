@@ -38,7 +38,8 @@ pub struct AccountsResult {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountNumber {
-    pub iban: String,
+    #[serde(default)]
+    pub iban: Option<String>,
     pub number: String,
     #[serde(rename = "sort_code")]
     pub sort_code: String,
