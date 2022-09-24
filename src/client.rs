@@ -36,7 +36,7 @@ pub struct AccountsResult {
     pub provider: AccountsProvider,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountNumber {
     pub iban: String,
     pub number: String,
@@ -46,13 +46,19 @@ pub struct AccountNumber {
     pub swift_bic: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountsProvider {
     #[serde(rename = "provider_id")]
     pub provider_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl PartialEq for AccountsProvider {
+    fn eq(&self, other: &Self) -> bool {
+        self.provider_id == other.provider_id
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardsResult {
     #[serde(rename = "account_id")]
     pub account_id: String,
@@ -74,7 +80,7 @@ pub struct CardsResult {
     pub provider: CardsProvider,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardsProvider {
     #[serde(rename = "provider_id")]
     pub provider_id: String,
@@ -86,7 +92,7 @@ pub struct CardsProvider {
 
 type BalanceResponse = Response<BalanceResult>;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BalanceResult {
     pub currency: String,
     pub available: Decimal,
@@ -94,7 +100,7 @@ pub struct BalanceResult {
     pub overdraft: Option<Decimal>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionsResult {
     // Is this _always_ present?
     #[serde(rename = "transaction_id")]
@@ -122,19 +128,19 @@ pub struct TransactionsResult {
     pub other: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionsRunningBalance {
     pub amount: Decimal,
     pub currency: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StandingOrderResult {
     #[serde(flatten)]
     inner: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectDebitResult {
     #[serde(flatten)]
     inner: serde_json::Value,
