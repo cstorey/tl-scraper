@@ -38,13 +38,14 @@ pub struct AccountsResult {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountNumber {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iban: Option<String>,
-    pub number: String,
-    #[serde(rename = "sort_code")]
-    pub sort_code: String,
-    #[serde(rename = "swift_bic")]
-    pub swift_bic: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<String>,
+    #[serde(rename = "sort_code", default, skip_serializing_if = "Option::is_none")]
+    pub sort_code: Option<String>,
+    #[serde(rename = "swift_bic", default, skip_serializing_if = "Option::is_none")]
+    pub swift_bic: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

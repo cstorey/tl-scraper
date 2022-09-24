@@ -72,13 +72,22 @@ async fn scrape_account_balance(
     let bal = tl.account_balance(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&format!(
-            "{} {}",
-            account.account_number.sort_code, account.account_number.number
-        ))
+        .join(&account_dir_name(account))
         .join("balance.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
+}
+
+fn account_dir_name(account: &AccountsResult) -> String {
+    let account_path = if let (Some(sort_code), Some(number)) = (
+        account.account_number.sort_code.as_ref(),
+        account.account_number.number.as_ref(),
+    ) {
+        format!("{} {}", sort_code, number)
+    } else {
+        account.account_id.clone()
+    };
+    account_path
 }
 
 #[instrument(skip(tl, target_dir, account), fields(account_id=%account.account_id))]
@@ -91,10 +100,7 @@ async fn scrape_account_pending(
     let bal = tl.account_pending(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&format!(
-            "{} {}",
-            account.account_number.sort_code, account.account_number.number
-        ))
+        .join(&account_dir_name(account))
         .join("pending.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -110,10 +116,7 @@ async fn scrape_account_standing_orders(
     let bal = tl.account_standing_orders(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&format!(
-            "{} {}",
-            account.account_number.sort_code, account.account_number.number
-        ))
+        .join(&account_dir_name(account))
         .join("standing-orders.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -129,10 +132,7 @@ async fn scrape_account_direct_debits(
     let bal = tl.account_direct_debits(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&format!(
-            "{} {}",
-            account.account_number.sort_code, account.account_number.number
-        ))
+        .join(&account_dir_name(account))
         .join("standing-orders.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -162,10 +162,7 @@ async fn scrape_account_tx(
         write_jsons_atomically(
             &target_dir
                 .join("accounts")
-                .join(&format!(
-                    "{} {}",
-                    account.account_number.sort_code, account.account_number.number
-                ))
+                .join(&account_dir_name(account))
                 .join(start_of_month.format("%Y-%m.jsons").to_string()),
             &txes.results,
         )
