@@ -58,7 +58,13 @@ pub async fn sync_info(tl: &TlClient, target_dir: &Path) -> Result<()> {
 #[instrument(skip(tl, target_dir))]
 async fn scrape_accounts(tl: &TlClient, target_dir: &Path) -> Result<Vec<AccountsResult>> {
     let accounts = tl.fetch_accounts().await?;
-    write_jsons_atomically(&target_dir.join("accounts.jsons"), &accounts.results).await?;
+    for account in accounts.results.iter() {
+        let path = target_dir
+            .join("accounts")
+            .join(&account_dir_name(account))
+            .join("account.jsons");
+        write_jsons_atomically(&path, &[account]).await?;
+    }
     Ok(accounts.results)
 }
 
@@ -175,6 +181,14 @@ async fn scrape_account_tx(
 async fn scrape_cards(tl: &TlClient, target_dir: &Path) -> Result<Vec<CardsResult>> {
     let cards = tl.fetch_cards().await?;
     write_jsons_atomically(&target_dir.join("cards.jsons"), &cards.results).await?;
+    for card in cards.results.iter() {
+        let path = target_dir
+            .join("cards")
+            .join(&card.account_id)
+            .join("account.jsons");
+        write_jsons_atomically(&path, &[card]).await?;
+    }
+
     Ok(cards.results)
 }
 
