@@ -61,7 +61,7 @@ async fn scrape_accounts(tl: &TlClient, target_dir: &Path) -> Result<Vec<Account
     for account in accounts.results.iter() {
         let path = target_dir
             .join("accounts")
-            .join(&account_dir_name(account))
+            .join(account_dir_name(account))
             .join("account.jsons");
         write_jsons_atomically(&path, &[account]).await?;
     }
@@ -78,7 +78,7 @@ async fn scrape_account_balance(
     let bal = tl.account_balance(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&account_dir_name(account))
+        .join(account_dir_name(account))
         .join("balance.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -106,7 +106,7 @@ async fn scrape_account_pending(
     let bal = tl.account_pending(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&account_dir_name(account))
+        .join(account_dir_name(account))
         .join("pending.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -122,7 +122,7 @@ async fn scrape_account_standing_orders(
     let bal = tl.account_standing_orders(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&account_dir_name(account))
+        .join(account_dir_name(account))
         .join("standing-orders.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -138,7 +138,7 @@ async fn scrape_account_direct_debits(
     let bal = tl.account_direct_debits(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(&account_dir_name(account))
+        .join(account_dir_name(account))
         .join("standing-orders.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -199,7 +199,7 @@ async fn scrape_card_balance(tl: &TlClient, target_dir: &Path, account_id: &str)
     write_jsons_atomically(
         &target_dir
             .join("cards")
-            .join(&account_id)
+            .join(account_id)
             .join("balance.jsons"),
         &bal.results,
     )
@@ -213,7 +213,7 @@ async fn scrape_card_pending(tl: &TlClient, target_dir: &Path, account_id: &str)
     let bal = tl.card_pending(account_id).await?;
     let path = &target_dir
         .join("cards")
-        .join(&account_id)
+        .join(account_id)
         .join("pending.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
