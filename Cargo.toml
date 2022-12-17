@@ -17,7 +17,7 @@ chrono =  { version = "0.4.19", features = ["serde"] }
 structopt = "0.3.26"
 secrecy = { version = "0.8.0", features = ["serde"] }
 hyper = "0.14.13"
-tracing-log = "0.1.2"
+tracing-log = "0.1.3"
 serde_urlencoded = "0.7.1"
 tempfile = "3.3.0"
 urlencoding = "2.1.2"
