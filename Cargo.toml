@@ -16,7 +16,7 @@ serde = { version = "1.0.151", features = ["serde_derive"] }
 chrono =  { version = "0.4.19", features = ["serde"] }
 structopt = "0.3.26"
 secrecy = { version = "0.8.0", features = ["serde"] }
-hyper = "0.14.13"
+hyper = "0.14.23"
 tracing-log = "0.1.2"
 serde_urlencoded = "0.7.1"
 tempfile = "3.2.0"
