@@ -41,7 +41,7 @@ jobs:
       - run: cargo fmt -- --check
       - *RESTORE_DEPS
       - run: cargo build --locked --all --tests
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - *SAVE_REGISTRY
       - *SAVE_DEPS
-      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run: cargo test --locked --all
