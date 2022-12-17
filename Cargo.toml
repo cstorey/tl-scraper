@@ -18,7 +18,7 @@ structopt = "0.3.23"
 secrecy = { version = "0.8.0", features = ["serde"] }
 hyper = "0.14.13"
 tracing-log = "0.1.2"
-serde_urlencoded = "0.7.0"
+serde_urlencoded = "0.7.1"
 tempfile = "3.2.0"
 urlencoding = "2.1.0"
 rust_decimal = "1.16.0"
