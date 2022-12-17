@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
@@ -92,13 +92,13 @@ async fn run() -> Result<()> {
 
     let client = reqwest::Client::new();
 
-    let tl = TlClient::new(
+    let tl = Arc::new(TlClient::new(
         client,
         opts.truelayer_env(),
         &opts.user_token,
         client_creds.id,
         client_creds.secret,
-    );
+    ));
 
     match opts.command {
         Commands::Auth { access_code } => {
@@ -161,21 +161,25 @@ async fn run() -> Result<()> {
             scrape_cards: cards,
             target_dir,
         } => {
+            let target_dir = Arc::from(target_dir.into_boxed_path());
+
             if scrape_info {
-                tl_scraper::sync_info(&tl, &target_dir).await?;
+                tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).await?;
             }
 
             if accounts {
-                tl_scraper::sync_accounts(&tl, &target_dir, from_date, to_date).await?;
+                tl_scraper::sync_accounts(tl.clone(), target_dir.clone(), from_date, to_date)
+                    .await?;
             }
 
             if cards {
-                tl_scraper::sync_cards(tl, &target_dir, from_date, to_date).await?;
+                tl_scraper::sync_cards(tl.clone(), target_dir.clone(), from_date, to_date).await?;
             }
         }
     };
     Ok(())
 }
+
 impl Options {
     pub(crate) fn truelayer_env(&self) -> Environment {
         if self.live {
