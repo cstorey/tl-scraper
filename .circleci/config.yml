@@ -1,0 +1,43 @@
+# Borrowed from https://github.com/sfackler/rust-postgres/blob/04bd98e7edb238511661b311c725a176012bca6a/.circleci/config.yml
+# Used under MIT license.
+
+version: 2
+_anchors:
+  restore_registry: &RESTORE_REGISTRY
+    restore_cache:
+      key: registry-{{ checksum "~/rust-version" }}
+  save_registry: &SAVE_REGISTRY
+    save_cache:
+      key: registry-{{ checksum "~/rust-version" }}-{{ .BuildNum }}
+      paths:
+      - ~/.cargo/registry/index
+  deps_key: &DEPS_KEY
+    key: deps-{{ checksum "~/rust-version" }}-{{ checksum "Cargo.lock" }}
+  restore_deps: &RESTORE_DEPS
+    restore_cache:
+      <<: *DEPS_KEY
+  save_deps: &SAVE_DEPS
+    save_cache:
+      <<: *DEPS_KEY
+      paths:
+      - target
+      - ~/.cargo/registry/cache
+
+jobs:
+  build:
+    docker:
+      - image: cimg/rust:1.65.0
+        environment:
+          RUSTFLAGS: -D warnings
+    steps:
+      - checkout
+      - run: rustc --version | tee ~/rust-version
+      - run: rustup component add clippy rustfmt
+      - *RESTORE_REGISTRY
+      - run: cargo fmt -- --check
+      - *RESTORE_DEPS
+      - run: cargo build --locked --all --tests
+      - *SAVE_REGISTRY
+      - *SAVE_DEPS
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --all
