@@ -33,6 +33,10 @@ jobs:
       - checkout
       - run: rustc --version | tee ~/rust-version
       - run: rustup component add clippy rustfmt
+      - run: |
+          git config --global user.email "circleci@invalid.example"
+          git config --global user.name "CircleCI build"
+          git merge --no-edit --no-ff origin/main
       - *RESTORE_REGISTRY
       - run: cargo fmt -- --check
       - *RESTORE_DEPS
