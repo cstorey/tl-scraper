@@ -5,7 +5,8 @@ use chrono::NaiveDate;
 use secrecy::SecretString;
 use serde::Deserialize;
 use structopt::StructOpt;
-use tl_scraper::{Environment, TlClient};
+use tl_scraper::{Environment, JobPool, TlClient};
+use tracing::debug;
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -59,6 +60,8 @@ enum Commands {
         scrape_accounts: bool,
         #[structopt(short = "c", long = "cards")]
         scrape_cards: bool,
+        #[structopt(short = "t", long = "concurrent-tasks")]
+        concurrency: Option<usize>,
         target_dir: PathBuf,
     },
 }
@@ -160,21 +163,43 @@ async fn run() -> Result<()> {
             scrape_accounts: accounts,
             scrape_cards: cards,
             target_dir,
+            concurrency,
         } => {
             let target_dir = Arc::from(target_dir.into_boxed_path());
+            let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
 
             if scrape_info {
-                tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).await?;
+                debug!("Scraping info");
+                handle.spawn(tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)))?;
             }
 
             if accounts {
-                tl_scraper::sync_accounts(tl.clone(), target_dir.clone(), from_date, to_date)
-                    .await?;
+                debug!("Scraping accounts");
+                handle.spawn(tl_scraper::sync_accounts(
+                    tl.clone(),
+                    target_dir.clone(),
+                    from_date,
+                    to_date,
+                    handle.clone(),
+                ))?;
             }
 
             if cards {
-                tl_scraper::sync_cards(tl.clone(), target_dir.clone(), from_date, to_date).await?;
+                debug!("Scraping cards");
+                handle.spawn(tl_scraper::sync_cards(
+                    tl.clone(),
+                    target_dir.clone(),
+                    from_date,
+                    to_date,
+                    handle.clone(),
+                ))?;
             }
+
+            // Needed to close the channel.
+            drop(handle);
+
+            debug!("Waiting for finish");
+            pool.run().await?;
         }
     };
     Ok(())

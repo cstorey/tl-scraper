@@ -9,7 +9,7 @@ use tracing::{debug, info, instrument};
 
 use crate::{
     client::{AccountsResult, CardsResult},
-    TlClient,
+    JobHandle, TlClient,
 };
 
 pub async fn sync_accounts(
@@ -17,17 +17,40 @@ pub async fn sync_accounts(
     target_dir: Arc<Path>,
     from_date: NaiveDate,
     to_date: NaiveDate,
+    jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let accounts = scrape_accounts(tl.clone(), target_dir.clone()).await?;
     for account in accounts {
-        scrape_account_balance(tl.clone(), target_dir.clone(), &account).await?;
-        scrape_account_pending(tl.clone(), target_dir.clone(), &account).await?;
-        scrape_account_tx(tl.clone(), target_dir.clone(), &account, from_date, to_date).await?;
+        jobs.spawn(scrape_account_balance(
+            tl.clone(),
+            target_dir.clone(),
+            account.clone(),
+        ))?;
+        jobs.spawn(scrape_account_pending(
+            tl.clone(),
+            target_dir.clone(),
+            account.clone(),
+        ))?;
+        jobs.spawn(scrape_account_tx(
+            tl.clone(),
+            target_dir.clone(),
+            account.clone(),
+            from_date,
+            to_date,
+        ))?;
 
         if false {
             // Only available when you've _recently_ authenticated.
-            scrape_account_standing_orders(tl.clone(), target_dir.clone(), &account).await?;
-            scrape_account_direct_debits(tl.clone(), target_dir.clone(), &account).await?;
+            jobs.spawn(scrape_account_standing_orders(
+                tl.clone(),
+                target_dir.clone(),
+                account.clone(),
+            ))?;
+            jobs.spawn(scrape_account_direct_debits(
+                tl.clone(),
+                target_dir.clone(),
+                account.clone(),
+            ))?;
         }
     }
     Ok(())
@@ -38,19 +61,27 @@ pub async fn sync_cards(
     target_dir: Arc<Path>,
     from_date: NaiveDate,
     to_date: NaiveDate,
+    jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let cards = scrape_cards(tl.clone(), target_dir.clone()).await?;
     for card in cards {
-        scrape_card_balance(tl.clone(), target_dir.clone(), &card.account_id).await?;
-        scrape_card_pending(tl.clone(), target_dir.clone(), &card.account_id).await?;
-        scrape_card_tx(
+        jobs.spawn(scrape_card_balance(
             tl.clone(),
             target_dir.clone(),
-            &card.account_id,
+            card.account_id.clone(),
+        ))?;
+        jobs.spawn(scrape_card_pending(
+            tl.clone(),
+            target_dir.clone(),
+            card.account_id.clone(),
+        ))?;
+        jobs.spawn(scrape_card_tx(
+            tl.clone(),
+            target_dir.clone(),
+            card.account_id,
             from_date,
             to_date,
-        )
-        .await?;
+        ))?;
     }
     Ok(())
 }
@@ -79,13 +110,13 @@ async fn scrape_accounts(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec
 async fn scrape_account_balance(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account: &AccountsResult,
+    account: AccountsResult,
 ) -> Result<()> {
     info!("Fetch balance");
     let bal = tl.account_balance(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(account_dir_name(account))
+        .join(account_dir_name(&account))
         .join("balance.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -107,13 +138,13 @@ fn account_dir_name(account: &AccountsResult) -> String {
 async fn scrape_account_pending(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account: &AccountsResult,
+    account: AccountsResult,
 ) -> Result<()> {
     info!("Fetch pending transactions");
     let bal = tl.account_pending(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(account_dir_name(account))
+        .join(account_dir_name(&account))
         .join("pending.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -123,13 +154,13 @@ async fn scrape_account_pending(
 async fn scrape_account_standing_orders(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account: &AccountsResult,
+    account: AccountsResult,
 ) -> Result<()> {
     info!("Fetch standing orders");
     let bal = tl.account_standing_orders(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(account_dir_name(account))
+        .join(account_dir_name(&account))
         .join("standing-orders.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -139,13 +170,13 @@ async fn scrape_account_standing_orders(
 async fn scrape_account_direct_debits(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account: &AccountsResult,
+    account: AccountsResult,
 ) -> Result<()> {
     info!("Fetch direct debits");
     let bal = tl.account_direct_debits(&account.account_id).await?;
     let path = &target_dir
         .join("accounts")
-        .join(account_dir_name(account))
+        .join(account_dir_name(&account))
         .join("standing-orders.jsons");
     write_jsons_atomically(path, &bal.results).await?;
     Ok(())
@@ -155,7 +186,7 @@ async fn scrape_account_direct_debits(
 async fn scrape_account_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account: &AccountsResult,
+    account: AccountsResult,
     from_date: NaiveDate,
     to_date: NaiveDate,
 ) -> Result<()> {
@@ -175,7 +206,7 @@ async fn scrape_account_tx(
         write_jsons_atomically(
             &target_dir
                 .join("accounts")
-                .join(&account_dir_name(account))
+                .join(&account_dir_name(&account))
                 .join(start_of_month.format("%Y-%m.jsons").to_string()),
             &txes.results,
         )
@@ -203,10 +234,10 @@ async fn scrape_cards(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec<Ca
 async fn scrape_card_balance(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account_id: &str,
+    account_id: String,
 ) -> Result<()> {
     info!("Fetch balance");
-    let bal = tl.card_balance(account_id).await?;
+    let bal = tl.card_balance(&account_id).await?;
     write_jsons_atomically(
         &target_dir
             .join("cards")
@@ -222,10 +253,10 @@ async fn scrape_card_balance(
 async fn scrape_card_pending(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account_id: &str,
+    account_id: String,
 ) -> Result<()> {
     info!("Fetch pending transactions");
-    let bal = tl.card_pending(account_id).await?;
+    let bal = tl.card_pending(&account_id).await?;
     let path = &target_dir
         .join("cards")
         .join(account_id)
@@ -238,7 +269,7 @@ async fn scrape_card_pending(
 async fn scrape_card_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    account_id: &str,
+    account_id: String,
     from_date: NaiveDate,
     to_date: NaiveDate,
 ) -> Result<()> {
@@ -246,7 +277,7 @@ async fn scrape_card_tx(
     for (start_of_month, end_of_month) in months(from_date, to_date) {
         debug!("Scrape month");
         let mut txes = tl
-            .card_transactions(account_id, start_of_month, end_of_month)
+            .card_transactions(&account_id, start_of_month, end_of_month)
             .await?;
 
         if txes.results.is_empty() {
@@ -259,7 +290,7 @@ async fn scrape_card_tx(
         write_jsons_atomically(
             &target_dir
                 .join("cards")
-                .join(account_id)
+                .join(&account_id)
                 .join(start_of_month.format("%Y-%m.jsons").to_string()),
             &txes.results,
         )
