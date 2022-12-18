@@ -309,7 +309,7 @@ fn months(
     let month_ends = month_starts
         .clone()
         .skip(1)
-        .map(move |d| min(d.pred(), to_date));
+        .map(move |d| min(d.pred_opt().unwrap(), to_date));
     month_starts
         .take_while(move |d| d <= &to_date)
         .zip(month_ends)
