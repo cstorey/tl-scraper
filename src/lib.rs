@@ -6,9 +6,11 @@ use tracing::{debug, error};
 
 mod authentication;
 mod client;
+mod join_pool;
 mod sync;
 
 pub use client::{Environment, TlClient};
+pub use join_pool::{JobHandle, JobPool};
 pub use sync::{sync_accounts, sync_cards, sync_info};
 
 fn serialize_secret<T: Zeroize + Serialize, S: Serializer>(
