@@ -1,12 +1,17 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use futures::{
     channel::mpsc, future::BoxFuture, stream::FusedStream, Future, FutureExt, StreamExt,
 };
-use tokio::task::JoinSet;
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore},
+    task::JoinSet,
+};
 use tracing::{instrument, trace};
 
 pub struct JobPool {
-    limit: usize,
+    semaphore: Arc<Semaphore>,
     rx: mpsc::UnboundedReceiver<Job>,
 }
 
@@ -19,24 +24,26 @@ pub struct JobHandle {
 
 impl JobPool {
     pub fn new(limit: usize) -> (Self, JobHandle) {
+        let semaphore = Arc::new(Semaphore::new(limit));
         let (tx, rx) = mpsc::unbounded();
-        (JobPool { rx, limit }, JobHandle { tx })
+        (JobPool { rx, semaphore }, JobHandle { tx })
     }
 
     #[instrument(skip_all)]
     pub async fn run(mut self) -> Result<()> {
         let mut tasks = JoinSet::new();
         loop {
-            let has_capacity = tasks.len() < self.limit;
-            trace!(incoming=?self.rx.is_terminated(), tasks=?tasks.len(), ?has_capacity, "Loop");
+            let available_permits = self.semaphore.available_permits();
+            trace!(incoming=?self.rx.is_terminated(), tasks=?tasks.len(), available_permits, "Loop");
             if self.rx.is_terminated() && tasks.is_empty() {
                 break;
             }
+
             tokio::select! {
-                item = self.rx.next(), if has_capacity && !self.rx.is_terminated() => {
-                    if let Some(Job(fut)) = item {
+                item = self.next_job(), if !self.rx.is_terminated() => {
+                    if let Some((Job(fut), permit)) = item? {
                         trace!("Spawning job");
-                        tasks.spawn(fut);
+                        tasks.spawn(async move { let res = fut.await; drop(permit); res });
                     } else {
                         trace!("Channel closed");
                     }
@@ -51,6 +58,16 @@ impl JobPool {
         }
         trace!("Done");
         Ok(())
+    }
+
+    async fn next_job(&mut self) -> Result<Option<(Job, OwnedSemaphorePermit)>> {
+        let permit = self.semaphore.clone().acquire_owned().await?;
+        if let Some(job) = self.rx.next().await {
+            Ok(Some((job, permit)))
+        } else {
+            drop(permit);
+            Ok(None)
+        }
     }
 }
 
