@@ -7,12 +7,14 @@ use tracing::{instrument, trace};
 
 pub struct JobPool {
     limit: usize,
-    rx: mpsc::UnboundedReceiver<BoxFuture<'static, Result<()>>>,
+    rx: mpsc::UnboundedReceiver<Job>,
 }
+
+struct Job(BoxFuture<'static, Result<()>>);
 
 #[derive(Clone)]
 pub struct JobHandle {
-    tx: mpsc::UnboundedSender<BoxFuture<'static, Result<()>>>,
+    tx: mpsc::UnboundedSender<Job>,
 }
 
 impl JobPool {
@@ -32,9 +34,9 @@ impl JobPool {
             }
             tokio::select! {
                 item = self.rx.next(), if has_capacity && !self.rx.is_terminated() => {
-                    if let Some(job) = item {
+                    if let Some(Job(fut)) = item {
                         trace!("Spawning job");
-                        tasks.spawn(job);
+                        tasks.spawn(fut);
                     } else {
                         trace!("Channel closed");
                     }
@@ -55,7 +57,7 @@ impl JobPool {
 impl JobHandle {
     pub fn spawn(&self, fut: impl Future<Output = Result<()>> + Send + 'static) -> Result<()> {
         self.tx
-            .unbounded_send(fut.boxed())
+            .unbounded_send(Job(fut.boxed()))
             .map_err(|_| anyhow::anyhow!("Pool dropped?"))?;
 
         Ok(())
