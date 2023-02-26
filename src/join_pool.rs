@@ -34,7 +34,7 @@ impl JobPool {
         let mut tasks = JoinSet::new();
         loop {
             let available_permits = self.semaphore.available_permits();
-            trace!(incoming=?self.rx.is_terminated(), tasks=?tasks.len(), available_permits, "Loop");
+            trace!(incoming=?!self.rx.is_terminated(), tasks=?tasks.len(), available_permits, "Loop");
             if self.rx.is_terminated() && tasks.is_empty() {
                 break;
             }
