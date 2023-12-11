@@ -1,4 +1,4 @@
-use std::{cmp::min, io::Write, path::Path, sync::Arc};
+use std::{cmp::min, io::Write, ops::RangeInclusive, path::Path, sync::Arc};
 
 use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
@@ -31,13 +31,15 @@ pub async fn sync_accounts(
             target_dir.clone(),
             account.clone(),
         ))?;
-        jobs.spawn(scrape_account_tx(
-            tl.clone(),
-            target_dir.clone(),
-            account.clone(),
-            from_date,
-            to_date,
-        ))?;
+
+        for (start_of_month, end_of_month) in months(from_date, to_date) {
+            jobs.spawn(scrape_account_tx(
+                tl.clone(),
+                target_dir.clone(),
+                account.clone(),
+                start_of_month..=end_of_month,
+            ))?;
+        }
 
         if false {
             // Only available when you've _recently_ authenticated.
@@ -182,36 +184,33 @@ async fn scrape_account_direct_debits(
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir, account, from_date, to_date), fields(account_id=%account.account_id))]
+#[instrument(skip_all, fields(account_id=%account.account_id, ?period))]
 async fn scrape_account_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
     account: AccountsResult,
-    from_date: NaiveDate,
-    to_date: NaiveDate,
+    period: RangeInclusive<NaiveDate>,
 ) -> Result<()> {
-    info!(?from_date, ?to_date, "Fetch transactions");
-    for (start_of_month, end_of_month) in months(from_date, to_date) {
-        debug!(?start_of_month, ?end_of_month, "Scrape month");
-        let mut txes = tl
-            .account_transactions(&account.account_id, start_of_month, end_of_month)
-            .await?;
-
-        if txes.results.is_empty() {
-            info!(?start_of_month, "No results for month found");
-            continue;
-        }
-
-        txes.results.reverse();
-        write_jsons_atomically(
-            &target_dir
-                .join("accounts")
-                .join(&account_dir_name(&account))
-                .join(start_of_month.format("%Y-%m.jsons").to_string()),
-            &txes.results,
-        )
+    // TODO: split into per-month jobs.
+    debug!(?period, "Scrape month");
+    let mut txes = tl
+        .account_transactions(&account.account_id, *period.start(), *period.end())
         .await?;
+
+    if txes.results.is_empty() {
+        info!("No results for month found");
+        return Ok(());
     }
+
+    txes.results.reverse();
+    write_jsons_atomically(
+        &target_dir
+            .join("accounts")
+            .join(&account_dir_name(&account))
+            .join(period.start().format("%Y-%m.jsons").to_string()),
+        &txes.results,
+    )
+    .await?;
     Ok(())
 }
 
