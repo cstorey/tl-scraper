@@ -74,7 +74,7 @@ impl JobPool {
                         trace!("Channel closed");
                     }
                 },
-                result = tasks.join_next() => {
+                result = tasks.join_next(), if !tasks.is_empty() => {
                     if let Some(result) = result {
                         self.stats.lock().expect("lock").jobs_completed += 1;
                         trace!("Task exited with: {:?}", result);
