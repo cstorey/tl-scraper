@@ -183,16 +183,21 @@ async fn sync(
     let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
     if scrape_info {
         debug!("Scraping info");
-        handle.spawn(tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)))?;
+        handle.spawn(
+            tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).instrument(Span::current()),
+        )?;
     }
     if accounts {
         debug!("Scraping accounts");
-        handle.spawn(tl_scraper::sync_accounts(
-            tl.clone(),
-            target_dir.clone(),
-            from_date..=to_date,
-            handle.clone(),
-        ))?;
+        handle.spawn(
+            tl_scraper::sync_accounts(
+                tl.clone(),
+                target_dir.clone(),
+                from_date..=to_date,
+                handle.clone(),
+            )
+            .instrument(Span::current()),
+        )?;
     }
     if cards {
         debug!("Scraping cards");
