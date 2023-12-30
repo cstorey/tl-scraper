@@ -6,7 +6,7 @@ use secrecy::SecretString;
 use serde::Deserialize;
 use structopt::StructOpt;
 use tl_scraper::{Environment, JobPool, TlClient};
-use tracing::debug;
+use tracing::{debug, instrument, Instrument, Span};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -51,19 +51,22 @@ enum Commands {
         from_date: NaiveDate,
         to_date: NaiveDate,
     },
-    Sync {
-        from_date: NaiveDate,
-        to_date: NaiveDate,
-        #[structopt(short = "i", long = "info")]
-        scrape_info: bool,
-        #[structopt(short = "a", long = "accounts")]
-        scrape_accounts: bool,
-        #[structopt(short = "c", long = "cards")]
-        scrape_cards: bool,
-        #[structopt(short = "t", long = "concurrent-tasks")]
-        concurrency: Option<usize>,
-        target_dir: PathBuf,
-    },
+    Sync(Sync),
+}
+
+#[derive(Debug, StructOpt)]
+struct Sync {
+    from_date: NaiveDate,
+    to_date: NaiveDate,
+    #[structopt(short = "i", long = "info")]
+    scrape_info: bool,
+    #[structopt(short = "a", long = "accounts")]
+    scrape_accounts: bool,
+    #[structopt(short = "c", long = "cards")]
+    scrape_cards: bool,
+    #[structopt(short = "t", long = "concurrent-tasks")]
+    concurrency: Option<usize>,
+    target_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -156,52 +159,61 @@ async fn run() -> Result<()> {
 
             println!("{:#?}", response);
         }
-        Commands::Sync {
-            from_date,
-            to_date,
-            scrape_info,
-            scrape_accounts: accounts,
-            scrape_cards: cards,
-            target_dir,
-            concurrency,
-        } => {
-            let target_dir = Arc::from(target_dir.into_boxed_path());
-            let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
-
-            if scrape_info {
-                debug!("Scraping info");
-                handle.spawn(tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)))?;
-            }
-
-            if accounts {
-                debug!("Scraping accounts");
-                handle.spawn(tl_scraper::sync_accounts(
-                    tl.clone(),
-                    target_dir.clone(),
-                    from_date,
-                    to_date,
-                    handle.clone(),
-                ))?;
-            }
-
-            if cards {
-                debug!("Scraping cards");
-                handle.spawn(tl_scraper::sync_cards(
-                    tl.clone(),
-                    target_dir.clone(),
-                    from_date,
-                    to_date,
-                    handle.clone(),
-                ))?;
-            }
-
-            // Needed to close the channel.
-            drop(handle);
-
-            debug!("Waiting for finish");
-            pool.run().await?;
+        Commands::Sync(sync_opts) => {
+            sync(tl, sync_opts).await?;
         }
     };
+    Ok(())
+}
+
+#[instrument(skip_all)]
+async fn sync(
+    tl: Arc<TlClient>,
+    Sync {
+        from_date,
+        to_date,
+        scrape_info,
+        scrape_accounts: accounts,
+        scrape_cards: cards,
+        target_dir,
+        concurrency,
+    }: Sync,
+) -> Result<(), anyhow::Error> {
+    let target_dir = Arc::from(target_dir.into_boxed_path());
+    let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
+    if scrape_info {
+        debug!("Scraping info");
+        handle.spawn(
+            tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).instrument(Span::current()),
+        )?;
+    }
+    if accounts {
+        debug!("Scraping accounts");
+        handle.spawn(
+            tl_scraper::sync_accounts(
+                tl.clone(),
+                target_dir.clone(),
+                from_date..=to_date,
+                handle.clone(),
+            )
+            .instrument(Span::current()),
+        )?;
+    }
+    if cards {
+        debug!("Scraping cards");
+        handle.spawn(
+            tl_scraper::sync_cards(
+                tl.clone(),
+                target_dir.clone(),
+                from_date..=to_date,
+                handle.clone(),
+            )
+            .instrument(Span::current()),
+        )?;
+    }
+    drop(handle);
+    debug!("Waiting for finish");
+    pool.run().await?;
     Ok(())
 }
 

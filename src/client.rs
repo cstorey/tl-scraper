@@ -107,10 +107,18 @@ pub struct TransactionsResult {
     // Is this _always_ present?
     #[serde(rename = "transaction_id")]
     pub transaction_id: Option<String>,
-    #[serde(rename = "normalised_provider_transaction_id")]
-    pub normalised_provider_transaction_id: String,
-    #[serde(rename = "provider_transaction_id")]
-    pub provider_transaction_id: String,
+    #[serde(
+        rename = "normalised_provider_transaction_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub normalised_provider_transaction_id: Option<String>,
+    #[serde(
+        rename = "provider_transaction_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub provider_transaction_id: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub description: String,
     pub amount: Decimal,
