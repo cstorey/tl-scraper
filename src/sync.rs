@@ -12,13 +12,14 @@ use crate::{
     JobHandle, TlClient,
 };
 
-#[instrument(skip_all, fields(?period))]
+#[instrument(skip_all)]
 pub async fn sync_accounts(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
     period: RangeInclusive<NaiveDate>,
     jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
+    info!(?period, "Scraping accounts for specified period");
     let accounts = accounts(tl.clone(), target_dir.clone()).await?;
     for account_item in accounts {
         account(&jobs, &tl, &target_dir, account_item, period.clone())
@@ -326,7 +327,9 @@ async fn write_jsons_atomically<T: Serialize + Send + 'static>(
     data: Vec<T>,
 ) -> Result<()> {
     let path = path.to_owned();
+    let span = Span::current();
     spawn_blocking(move || -> Result<()> {
+        let _guard = span.enter();
         let dir = path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(dir)?;
         let mut tmpf = NamedTempFile::new_in(dir)?;
