@@ -97,10 +97,17 @@ async fn card(
         card_pending(tl.clone(), target_dir.clone(), card.account_id.clone())
             .instrument(Span::current()),
     )?;
-    jobs.spawn(
-        card_tx(tl.clone(), target_dir.clone(), card.account_id, period)
+    for month in months(period) {
+        jobs.spawn(
+            card_tx(
+                tl.clone(),
+                target_dir.clone(),
+                card.account_id.clone(),
+                month,
+            )
             .instrument(Span::current()),
-    )?;
+        )?
+    }
     Ok(())
 }
 
@@ -200,16 +207,16 @@ async fn account_direct_debits(
     Ok(())
 }
 
-#[instrument(skip_all, fields(?period))]
+#[instrument(skip_all, fields(?month))]
 async fn account_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
     account: AccountsResult,
-    period: RangeInclusive<NaiveDate>,
+    month: RangeInclusive<NaiveDate>,
 ) -> Result<()> {
     // TODO: split into per-month jobs.
     let mut txes = tl
-        .account_transactions(&account.account_id, *period.start(), *period.end())
+        .account_transactions(&account.account_id, *month.start(), *month.end())
         .await?;
 
     if txes.results.is_empty() {
@@ -222,7 +229,7 @@ async fn account_tx(
         &target_dir
             .join("accounts")
             .join(&account_dir_name(&account))
-            .join(period.start().format("%Y-%m.jsons").to_string()),
+            .join(month.start().format("%Y-%m.jsons").to_string()),
         &txes.results,
     )
     .await?;
@@ -271,36 +278,32 @@ async fn card_pending(tl: Arc<TlClient>, target_dir: Arc<Path>, account_id: Stri
     Ok(())
 }
 
-#[instrument(skip_all, fields(?period))]
+#[instrument(skip_all, fields(?month))]
 async fn card_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
     account_id: String,
-    period: RangeInclusive<NaiveDate>,
+    month: RangeInclusive<NaiveDate>,
 ) -> Result<()> {
-    info!("Fetch transactions");
-    for month in months(period.clone()) {
-        debug!("Scrape month");
-        let mut txes = tl
-            .card_transactions(&account_id, *month.start(), *month.end())
-            .await?;
-
-        if txes.results.is_empty() {
-            info!(?month, "No results for month found");
-            continue;
-        }
-
-        txes.results.reverse();
-
-        write_jsons_atomically(
-            &target_dir
-                .join("cards")
-                .join(&account_id)
-                .join(period.start().format("%Y-%m.jsons").to_string()),
-            &txes.results,
-        )
+    let mut txes = tl
+        .card_transactions(&account_id, *month.start(), *month.end())
         .await?;
+
+    if txes.results.is_empty() {
+        info!(?month, "No results for month found");
+        return Ok(());
     }
+
+    txes.results.reverse();
+
+    write_jsons_atomically(
+        &target_dir
+            .join("cards")
+            .join(&account_id)
+            .join(month.start().format("%Y-%m.jsons").to_string()),
+        &txes.results,
+    )
+    .await?;
     Ok(())
 }
 
