@@ -326,7 +326,9 @@ async fn write_jsons_atomically<T: Serialize + Send + 'static>(
     data: Vec<T>,
 ) -> Result<()> {
     let path = path.to_owned();
+    let span = Span::current();
     spawn_blocking(move || -> Result<()> {
+        let _guard = span.enter();
         let dir = path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(dir)?;
         let mut tmpf = NamedTempFile::new_in(dir)?;
