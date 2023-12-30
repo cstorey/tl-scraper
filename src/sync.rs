@@ -12,13 +12,14 @@ use crate::{
     JobHandle, TlClient,
 };
 
-#[instrument(skip_all, fields(?period))]
+#[instrument(skip_all)]
 pub async fn sync_accounts(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
     period: RangeInclusive<NaiveDate>,
     jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
+    info!(?period, "Scraping accounts for specified period");
     let accounts = accounts(tl.clone(), target_dir.clone()).await?;
     for account_item in accounts {
         account(&jobs, &tl, &target_dir, account_item, period.clone())
