@@ -5,13 +5,14 @@ use chrono::{Datelike, NaiveDate};
 use serde::Serialize;
 use tempfile::NamedTempFile;
 use tokio::task::block_in_place;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, Instrument, Span};
 
 use crate::{
     client::{AccountsResult, CardsResult},
     JobHandle, TlClient,
 };
 
+#[instrument(skip_all)]
 pub async fn sync_accounts(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -20,44 +21,58 @@ pub async fn sync_accounts(
     jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let accounts = scrape_accounts(tl.clone(), target_dir.clone()).await?;
-    for account in accounts {
-        jobs.spawn(scrape_account_balance(
-            tl.clone(),
-            target_dir.clone(),
-            account.clone(),
-        ))?;
-        jobs.spawn(scrape_account_pending(
-            tl.clone(),
-            target_dir.clone(),
-            account.clone(),
-        ))?;
-
-        for (start_of_month, end_of_month) in months(from_date, to_date) {
-            jobs.spawn(scrape_account_tx(
-                tl.clone(),
-                target_dir.clone(),
-                account.clone(),
-                start_of_month..=end_of_month,
-            ))?;
-        }
-
-        if false {
-            // Only available when you've _recently_ authenticated.
-            jobs.spawn(scrape_account_standing_orders(
-                tl.clone(),
-                target_dir.clone(),
-                account.clone(),
-            ))?;
-            jobs.spawn(scrape_account_direct_debits(
-                tl.clone(),
-                target_dir.clone(),
-                account.clone(),
-            ))?;
-        }
+    for account_item in accounts {
+        account(&jobs, &tl, &target_dir, account_item, from_date, to_date)
+            .instrument(Span::current())
+            .await?;
     }
     Ok(())
 }
 
+#[instrument(skip_all, fields(account_id=%account.account_id))]
+async fn account(
+    jobs: &JobHandle,
+    tl: &Arc<TlClient>,
+    target_dir: &Arc<Path>,
+    account: AccountsResult,
+    from_date: NaiveDate,
+    to_date: NaiveDate,
+) -> Result<(), anyhow::Error> {
+    jobs.spawn(
+        scrape_account_balance(tl.clone(), target_dir.clone(), account.clone())
+            .instrument(Span::current()),
+    )?;
+    jobs.spawn(
+        scrape_account_pending(tl.clone(), target_dir.clone(), account.clone())
+            .instrument(Span::current()),
+    )?;
+    for (start_of_month, end_of_month) in months(from_date, to_date) {
+        jobs.spawn(
+            scrape_account_tx(
+                tl.clone(),
+                target_dir.clone(),
+                account.clone(),
+                start_of_month..=end_of_month,
+            )
+            .instrument(Span::current()),
+        )?;
+    }
+
+    if false {
+        // Only available when you've _recently_ authenticated.
+        jobs.spawn(
+            scrape_account_standing_orders(tl.clone(), target_dir.clone(), account.clone())
+                .instrument(Span::current()),
+        )?;
+        jobs.spawn(
+            scrape_account_direct_debits(tl.clone(), target_dir.clone(), account.clone())
+                .instrument(Span::current()),
+        )?;
+    }
+    Ok(())
+}
+
+#[instrument(skip_all)]
 pub async fn sync_cards(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -66,36 +81,52 @@ pub async fn sync_cards(
     jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let cards = scrape_cards(tl.clone(), target_dir.clone()).await?;
-    for card in cards {
-        jobs.spawn(scrape_card_balance(
-            tl.clone(),
-            target_dir.clone(),
-            card.account_id.clone(),
-        ))?;
-        jobs.spawn(scrape_card_pending(
-            tl.clone(),
-            target_dir.clone(),
-            card.account_id.clone(),
-        ))?;
-        jobs.spawn(scrape_card_tx(
+    for card_result in cards {
+        card(&jobs, &tl, &target_dir, card_result, from_date, to_date)
+            .instrument(Span::current())
+            .await?;
+    }
+    Ok(())
+}
+
+#[instrument(skip_all, fields(account_id=%card.account_id))]
+async fn card(
+    jobs: &JobHandle,
+    tl: &Arc<TlClient>,
+    target_dir: &Arc<Path>,
+    card: CardsResult,
+    from_date: NaiveDate,
+    to_date: NaiveDate,
+) -> Result<(), anyhow::Error> {
+    jobs.spawn(
+        scrape_card_balance(tl.clone(), target_dir.clone(), card.account_id.clone())
+            .instrument(Span::current()),
+    )?;
+    jobs.spawn(
+        scrape_card_pending(tl.clone(), target_dir.clone(), card.account_id.clone())
+            .instrument(Span::current()),
+    )?;
+    jobs.spawn(
+        scrape_card_tx(
             tl.clone(),
             target_dir.clone(),
             card.account_id,
             from_date,
             to_date,
-        ))?;
-    }
+        )
+        .instrument(Span::current()),
+    )?;
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir))]
+#[instrument(skip_all)]
 pub async fn sync_info(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<()> {
     let user_info = tl.fetch_info().await?;
     write_jsons_atomically(&target_dir.join("user-info.jsons"), &user_info.results).await?;
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir))]
+#[instrument(skip_all)]
 async fn scrape_accounts(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec<AccountsResult>> {
     let accounts = tl.fetch_accounts().await?;
     for account in accounts.results.iter() {
@@ -108,7 +139,7 @@ async fn scrape_accounts(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec
     Ok(accounts.results)
 }
 
-#[instrument(skip(tl, target_dir, account), fields(account_id=%account.account_id))]
+#[instrument(skip_all)]
 async fn scrape_account_balance(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -136,7 +167,7 @@ fn account_dir_name(account: &AccountsResult) -> String {
     account_path
 }
 
-#[instrument(skip(tl, target_dir, account), fields(account_id=%account.account_id))]
+#[instrument(skip_all)]
 async fn scrape_account_pending(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -152,7 +183,7 @@ async fn scrape_account_pending(
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir, account), fields(account_id=%account.account_id))]
+#[instrument(skip_all)]
 async fn scrape_account_standing_orders(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -168,7 +199,7 @@ async fn scrape_account_standing_orders(
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir, account), fields(account_id=%account.account_id))]
+#[instrument(skip_all)]
 async fn scrape_account_direct_debits(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -184,7 +215,7 @@ async fn scrape_account_direct_debits(
     Ok(())
 }
 
-#[instrument(skip_all, fields(account_id=%account.account_id, ?period))]
+#[instrument(skip_all, fields(?period))]
 async fn scrape_account_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -192,7 +223,6 @@ async fn scrape_account_tx(
     period: RangeInclusive<NaiveDate>,
 ) -> Result<()> {
     // TODO: split into per-month jobs.
-    debug!(?period, "Scrape month");
     let mut txes = tl
         .account_transactions(&account.account_id, *period.start(), *period.end())
         .await?;
@@ -214,7 +244,7 @@ async fn scrape_account_tx(
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir))]
+#[instrument(skip_all)]
 async fn scrape_cards(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec<CardsResult>> {
     let cards = tl.fetch_cards().await?;
     write_jsons_atomically(&target_dir.join("cards.jsons"), &cards.results).await?;
@@ -229,7 +259,7 @@ async fn scrape_cards(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec<Ca
     Ok(cards.results)
 }
 
-#[instrument(skip(tl, target_dir))]
+#[instrument(skip_all)]
 async fn scrape_card_balance(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -248,7 +278,7 @@ async fn scrape_card_balance(
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir, account_id), fields(account_id=%account_id))]
+#[instrument(skip_all)]
 async fn scrape_card_pending(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
@@ -264,7 +294,7 @@ async fn scrape_card_pending(
     Ok(())
 }
 
-#[instrument(skip(tl, target_dir))]
+#[instrument(skip_all, fields(?from_date, ?to_date))]
 async fn scrape_card_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
