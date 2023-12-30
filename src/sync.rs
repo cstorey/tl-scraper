@@ -4,7 +4,7 @@ use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
 use serde::Serialize;
 use tempfile::NamedTempFile;
-use tokio::task::block_in_place;
+use tokio::task::spawn_blocking;
 use tracing::{debug, info, instrument, Instrument, Span};
 
 use crate::{
@@ -114,19 +114,19 @@ async fn card(
 #[instrument(skip_all)]
 pub async fn sync_info(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<()> {
     let user_info = tl.fetch_info().await?;
-    write_jsons_atomically(&target_dir.join("user-info.jsons"), &user_info.results).await?;
+    write_jsons_atomically(&target_dir.join("user-info.jsons"), user_info.results).await?;
     Ok(())
 }
 
 #[instrument(skip_all)]
 async fn accounts(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec<AccountsResult>> {
     let accounts = tl.fetch_accounts().await?;
-    for account in accounts.results.iter() {
+    for account in accounts.results.iter().cloned() {
         let path = target_dir
             .join("accounts")
-            .join(account_dir_name(account))
+            .join(account_dir_name(&account))
             .join("account.jsons");
-        write_jsons_atomically(&path, &[account]).await?;
+        write_jsons_atomically(&path, vec![account]).await?;
     }
     Ok(accounts.results)
 }
@@ -143,7 +143,7 @@ async fn account_balance(
         .join("accounts")
         .join(account_dir_name(&account))
         .join("balance.jsons");
-    write_jsons_atomically(path, &bal.results).await?;
+    write_jsons_atomically(path, bal.results).await?;
     Ok(())
 }
 
@@ -171,7 +171,7 @@ async fn account_pending(
         .join("accounts")
         .join(account_dir_name(&account))
         .join("pending.jsons");
-    write_jsons_atomically(path, &bal.results).await?;
+    write_jsons_atomically(path, bal.results).await?;
     Ok(())
 }
 
@@ -187,7 +187,7 @@ async fn account_standing_orders(
         .join("accounts")
         .join(account_dir_name(&account))
         .join("standing-orders.jsons");
-    write_jsons_atomically(path, &bal.results).await?;
+    write_jsons_atomically(path, bal.results).await?;
     Ok(())
 }
 
@@ -203,7 +203,7 @@ async fn account_direct_debits(
         .join("accounts")
         .join(account_dir_name(&account))
         .join("standing-orders.jsons");
-    write_jsons_atomically(path, &bal.results).await?;
+    write_jsons_atomically(path, bal.results).await?;
     Ok(())
 }
 
@@ -230,7 +230,7 @@ async fn account_tx(
             .join("accounts")
             .join(&account_dir_name(&account))
             .join(month.start().format("%Y-%m.jsons").to_string()),
-        &txes.results,
+        txes.results,
     )
     .await?;
     Ok(())
@@ -239,13 +239,13 @@ async fn account_tx(
 #[instrument(skip_all)]
 async fn cards(tl: Arc<TlClient>, target_dir: Arc<Path>) -> Result<Vec<CardsResult>> {
     let cards = tl.fetch_cards().await?;
-    write_jsons_atomically(&target_dir.join("cards.jsons"), &cards.results).await?;
-    for card in cards.results.iter() {
+    write_jsons_atomically(&target_dir.join("cards.jsons"), cards.results.clone()).await?;
+    for card in cards.results.iter().cloned() {
         let path = target_dir
             .join("cards")
             .join(&card.account_id)
             .join("account.jsons");
-        write_jsons_atomically(&path, &[card]).await?;
+        write_jsons_atomically(&path, vec![card]).await?;
     }
 
     Ok(cards.results)
@@ -260,7 +260,7 @@ async fn card_balance(tl: Arc<TlClient>, target_dir: Arc<Path>, account_id: Stri
             .join("cards")
             .join(account_id)
             .join("balance.jsons"),
-        &bal.results,
+        bal.results,
     )
     .await?;
     Ok(())
@@ -274,7 +274,7 @@ async fn card_pending(tl: Arc<TlClient>, target_dir: Arc<Path>, account_id: Stri
         .join("cards")
         .join(account_id)
         .join("pending.jsons");
-    write_jsons_atomically(path, &bal.results).await?;
+    write_jsons_atomically(path, bal.results).await?;
     Ok(())
 }
 
@@ -301,7 +301,7 @@ async fn card_tx(
             .join("cards")
             .join(&account_id)
             .join(month.start().format("%Y-%m.jsons").to_string()),
-        &txes.results,
+        txes.results,
     )
     .await?;
     Ok(())
@@ -321,8 +321,12 @@ fn months(period: RangeInclusive<NaiveDate>) -> impl Iterator<Item = RangeInclus
         .map(|(a, b)| a..=b)
 }
 
-async fn write_jsons_atomically<T: Serialize>(path: &Path, data: &[T]) -> Result<()> {
-    block_in_place(|| {
+async fn write_jsons_atomically<T: Serialize + Send + 'static>(
+    path: &Path,
+    data: Vec<T>,
+) -> Result<()> {
+    let path = path.to_owned();
+    spawn_blocking(move || -> Result<()> {
         let dir = path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(dir)?;
         let mut tmpf = NamedTempFile::new_in(dir)?;
@@ -335,8 +339,10 @@ async fn write_jsons_atomically<T: Serialize>(path: &Path, data: &[T]) -> Result
             buf.clear();
         }
         tmpf.as_file_mut().flush()?;
-        tmpf.persist(path)?;
+        tmpf.persist(&path)?;
         debug!(?path, "Stored data");
         Ok(())
     })
+    .await??;
+    Ok(())
 }
