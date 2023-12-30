@@ -12,31 +12,29 @@ use crate::{
     JobHandle, TlClient,
 };
 
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(?period))]
 pub async fn sync_accounts(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    from_date: NaiveDate,
-    to_date: NaiveDate,
+    period: RangeInclusive<NaiveDate>,
     jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let accounts = scrape_accounts(tl.clone(), target_dir.clone()).await?;
     for account_item in accounts {
-        account(&jobs, &tl, &target_dir, account_item, from_date, to_date)
+        account(&jobs, &tl, &target_dir, account_item, period.clone())
             .instrument(Span::current())
             .await?;
     }
     Ok(())
 }
 
-#[instrument(skip_all, fields(account_id=%account.account_id))]
+#[instrument(skip_all, fields(account_id=%account.account_id, ?period))]
 async fn account(
     jobs: &JobHandle,
     tl: &Arc<TlClient>,
     target_dir: &Arc<Path>,
     account: AccountsResult,
-    from_date: NaiveDate,
-    to_date: NaiveDate,
+    period: RangeInclusive<NaiveDate>,
 ) -> Result<(), anyhow::Error> {
     jobs.spawn(
         scrape_account_balance(tl.clone(), target_dir.clone(), account.clone())
@@ -46,15 +44,10 @@ async fn account(
         scrape_account_pending(tl.clone(), target_dir.clone(), account.clone())
             .instrument(Span::current()),
     )?;
-    for (start_of_month, end_of_month) in months(from_date, to_date) {
+    for month in months(period) {
         jobs.spawn(
-            scrape_account_tx(
-                tl.clone(),
-                target_dir.clone(),
-                account.clone(),
-                start_of_month..=end_of_month,
-            )
-            .instrument(Span::current()),
+            scrape_account_tx(tl.clone(), target_dir.clone(), account.clone(), month)
+                .instrument(Span::current()),
         )?;
     }
 
@@ -76,13 +69,12 @@ async fn account(
 pub async fn sync_cards(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
-    from_date: NaiveDate,
-    to_date: NaiveDate,
+    period: RangeInclusive<NaiveDate>,
     jobs: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let cards = scrape_cards(tl.clone(), target_dir.clone()).await?;
     for card_result in cards {
-        card(&jobs, &tl, &target_dir, card_result, from_date, to_date)
+        card(&jobs, &tl, &target_dir, card_result, period.clone())
             .instrument(Span::current())
             .await?;
     }
@@ -95,8 +87,7 @@ async fn card(
     tl: &Arc<TlClient>,
     target_dir: &Arc<Path>,
     card: CardsResult,
-    from_date: NaiveDate,
-    to_date: NaiveDate,
+    period: RangeInclusive<NaiveDate>,
 ) -> Result<(), anyhow::Error> {
     jobs.spawn(
         scrape_card_balance(tl.clone(), target_dir.clone(), card.account_id.clone())
@@ -107,14 +98,8 @@ async fn card(
             .instrument(Span::current()),
     )?;
     jobs.spawn(
-        scrape_card_tx(
-            tl.clone(),
-            target_dir.clone(),
-            card.account_id,
-            from_date,
-            to_date,
-        )
-        .instrument(Span::current()),
+        scrape_card_tx(tl.clone(), target_dir.clone(), card.account_id, period)
+            .instrument(Span::current()),
     )?;
     Ok(())
 }
@@ -294,23 +279,22 @@ async fn scrape_card_pending(
     Ok(())
 }
 
-#[instrument(skip_all, fields(?from_date, ?to_date))]
+#[instrument(skip_all, fields(?period))]
 async fn scrape_card_tx(
     tl: Arc<TlClient>,
     target_dir: Arc<Path>,
     account_id: String,
-    from_date: NaiveDate,
-    to_date: NaiveDate,
+    period: RangeInclusive<NaiveDate>,
 ) -> Result<()> {
     info!("Fetch transactions");
-    for (start_of_month, end_of_month) in months(from_date, to_date) {
+    for month in months(period.clone()) {
         debug!("Scrape month");
         let mut txes = tl
-            .card_transactions(&account_id, start_of_month, end_of_month)
+            .card_transactions(&account_id, *month.start(), *month.end())
             .await?;
 
         if txes.results.is_empty() {
-            info!(?start_of_month, "No results for month found");
+            info!(?month, "No results for month found");
             continue;
         }
 
@@ -320,7 +304,7 @@ async fn scrape_card_tx(
             &target_dir
                 .join("cards")
                 .join(&account_id)
-                .join(start_of_month.format("%Y-%m.jsons").to_string()),
+                .join(period.start().format("%Y-%m.jsons").to_string()),
             &txes.results,
         )
         .await?;
@@ -328,20 +312,18 @@ async fn scrape_card_tx(
     Ok(())
 }
 
-fn months(
-    from_date: NaiveDate,
-    to_date: NaiveDate,
-) -> impl Iterator<Item = (NaiveDate, NaiveDate)> {
-    let month_start_date = from_date.with_day(1).expect("day one");
+fn months(period: RangeInclusive<NaiveDate>) -> impl Iterator<Item = RangeInclusive<NaiveDate>> {
+    let month_start_date = period.start().with_day(1).expect("day one");
 
     let month_starts = month_start_date.iter_days().filter(|d| d.day() == 1);
-    let month_ends = month_starts
-        .clone()
-        .skip(1)
-        .map(move |d| min(d.pred_opt().unwrap(), to_date));
+    let month_ends = month_starts.clone().skip(1).map({
+        let period = period.clone();
+        move |d| min(d.pred_opt().unwrap(), *period.end())
+    });
     month_starts
-        .take_while(move |d| d <= &to_date)
+        .take_while(move |d| d <= period.end())
         .zip(month_ends)
+        .map(|(a, b)| a..=b)
 }
 
 async fn write_jsons_atomically<T: Serialize>(path: &Path, data: &[T]) -> Result<()> {

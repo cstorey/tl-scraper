@@ -6,7 +6,7 @@ use secrecy::SecretString;
 use serde::Deserialize;
 use structopt::StructOpt;
 use tl_scraper::{Environment, JobPool, TlClient};
-use tracing::debug;
+use tracing::{debug, Instrument, Span};
 
 #[derive(Debug, StructOpt)]
 struct Options {
@@ -178,21 +178,22 @@ async fn run() -> Result<()> {
                 handle.spawn(tl_scraper::sync_accounts(
                     tl.clone(),
                     target_dir.clone(),
-                    from_date,
-                    to_date,
+                    from_date..=to_date,
                     handle.clone(),
                 ))?;
             }
 
             if cards {
                 debug!("Scraping cards");
-                handle.spawn(tl_scraper::sync_cards(
-                    tl.clone(),
-                    target_dir.clone(),
-                    from_date,
-                    to_date,
-                    handle.clone(),
-                ))?;
+                handle.spawn(
+                    tl_scraper::sync_cards(
+                        tl.clone(),
+                        target_dir.clone(),
+                        from_date..=to_date,
+                        handle.clone(),
+                    )
+                    .instrument(Span::current()),
+                )?;
             }
 
             // Needed to close the channel.
