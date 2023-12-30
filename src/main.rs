@@ -2,21 +2,21 @@ use std::{fs::File, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
+use clap::{Parser, Subcommand};
 use secrecy::SecretString;
 use serde::Deserialize;
-use structopt::StructOpt;
 use tl_scraper::{Environment, JobPool, TlClient};
 use tracing::{debug, instrument, Instrument, Span};
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct Options {
-    #[structopt(short = "c", long = "client-credentials")]
+    #[clap(short = 'c', long = "client-credentials")]
     client_credentials: PathBuf,
-    #[structopt(short = "u", long = "user-token")]
+    #[clap(short = 'u', long = "user-token")]
     user_token: PathBuf,
-    #[structopt(short = "l", long = "live")]
+    #[clap(short = 'l', long = "live")]
     live: bool,
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     command: Commands,
 }
 
@@ -26,10 +26,10 @@ struct ClientCreds {
     secret: SecretString,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 enum Commands {
     Auth {
-        #[structopt(short = "t", long = "access-code")]
+        #[clap(short = 't', long = "access-code")]
         access_code: SecretString,
     },
     Info {},
@@ -54,17 +54,17 @@ enum Commands {
     Sync(Sync),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct Sync {
     from_date: NaiveDate,
     to_date: NaiveDate,
-    #[structopt(short = "i", long = "info")]
+    #[clap(short = 'i', long = "info")]
     scrape_info: bool,
-    #[structopt(short = "a", long = "accounts")]
+    #[clap(short = 'a', long = "accounts")]
     scrape_accounts: bool,
-    #[structopt(short = "c", long = "cards")]
+    #[clap(short = 'c', long = "cards")]
     scrape_cards: bool,
-    #[structopt(short = "t", long = "concurrent-tasks")]
+    #[clap(short = 't', long = "concurrent-tasks")]
     concurrency: Option<usize>,
     target_dir: PathBuf,
 }
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
-    let opts = Options::from_args();
+    let opts = Options::parse();
 
     let client_creds: ClientCreds =
         serde_json::from_reader(File::open(&opts.client_credentials).with_context(|| {
