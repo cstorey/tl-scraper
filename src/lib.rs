@@ -4,7 +4,6 @@ use secrecy::{ExposeSecret, Secret, Zeroize};
 use serde::{de::DeserializeOwned, Serialize, Serializer};
 use tracing::{debug, error};
 
-mod authentication;
 mod client;
 mod join_pool;
 mod sync;
