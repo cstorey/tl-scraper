@@ -90,6 +90,10 @@ impl Authenticator {
         }
     }
 
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
     pub(crate) async fn authenticate(&self, access_code: Secret<String>) -> Result<()> {
         let fetched_at = Utc::now();
         let token_response = self.fetch_access_token(&access_code).await?;

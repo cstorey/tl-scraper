@@ -192,6 +192,13 @@ impl TlClient {
         Self { client, env, auth }
     }
 
+    pub fn env(&self) -> Environment {
+        self.env.clone()
+    }
+    pub fn client_id(&self) -> &str {
+        self.auth.client_id()
+    }
+
     pub async fn authenticate(&self, access_code: Secret<String>) -> Result<()> {
         self.auth.authenticate(access_code).await?;
 
