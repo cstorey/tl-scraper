@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tracing::{debug, info};
 
-use crate::{client::REDIRECT_URI, Environment};
+use crate::Environment;
 use crate::{perform_request, serialize_optional_secret, serialize_secret};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,7 +103,7 @@ impl Authenticator {
         redirect_uri: &str,
     ) -> Result<()> {
         let fetched_at = Utc::now();
-        let token_response = self.fetch_access_token(&access_code).await?;
+        let token_response = self.fetch_access_token(&access_code, redirect_uri).await?;
 
         info!(?token_response, "Response");
         let state = AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
@@ -136,6 +136,7 @@ impl Authenticator {
     async fn fetch_access_token(
         &self,
         access_code: &Secret<String>,
+        redirect_uri: &str,
     ) -> Result<FetchAccessTokenResponse> {
         let url = self
             .env
@@ -146,7 +147,7 @@ impl Authenticator {
             grant_type: GrantType::AuthorizationCode,
             client_id: self.client_id.to_owned(),
             client_secret: self.client_secret.clone(),
-            redirect_uri: REDIRECT_URI.into(),
+            redirect_uri: redirect_uri.to_owned(),
             code: Some(access_code.clone()),
             refresh_token: None,
         };
@@ -230,6 +231,7 @@ impl AuthData {
     }
 
     fn default_redirect_uri() -> String {
+        const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
         REDIRECT_URI.to_owned()
     }
 }
