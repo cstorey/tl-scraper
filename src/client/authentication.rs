@@ -71,6 +71,9 @@ pub struct AuthData {
     #[serde(serialize_with = "serialize_secret")]
     refresh_token: SecretString,
     scope: Option<String>,
+    // TODO: Remove default once all state migrated
+    #[serde(default = "AuthData::default_redirect_uri")]
+    redirect_uri: String,
 }
 
 impl Authenticator {
@@ -94,12 +97,16 @@ impl Authenticator {
         &self.client_id
     }
 
-    pub(crate) async fn authenticate(&self, access_code: Secret<String>) -> Result<()> {
+    pub(crate) async fn authenticate(
+        &self,
+        access_code: Secret<String>,
+        redirect_uri: &str,
+    ) -> Result<()> {
         let fetched_at = Utc::now();
         let token_response = self.fetch_access_token(&access_code).await?;
 
         info!(?token_response, "Response");
-        let state = AuthData::from_response(token_response, fetched_at);
+        let state = AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
 
         self.write_auth_data(&state).await?;
 
@@ -161,7 +168,7 @@ impl Authenticator {
             grant_type: GrantType::RefreshToken,
             client_id: self.client_id.to_owned(),
             client_secret: self.client_secret.clone(),
-            redirect_uri: REDIRECT_URI.into(),
+            redirect_uri: data.redirect_uri.clone(),
             code: None,
             refresh_token: Some(data.refresh_token.clone()),
         };
@@ -173,7 +180,11 @@ impl Authenticator {
         )
         .await?;
 
-        Ok(AuthData::from_response(token_response, at))
+        Ok(AuthData::from_response(
+            token_response,
+            at,
+            data.redirect_uri.clone(),
+        ))
     }
 
     async fn write_auth_data(&self, state: &AuthData) -> Result<()> {
@@ -187,7 +198,11 @@ impl Authenticator {
 }
 
 impl AuthData {
-    fn from_response(response: FetchAccessTokenResponse, fetched_at: DateTime<Utc>) -> Self {
+    fn from_response(
+        response: FetchAccessTokenResponse,
+        fetched_at: DateTime<Utc>,
+        redirect_uri: String,
+    ) -> Self {
         let FetchAccessTokenResponse {
             access_token,
             token_type,
@@ -202,6 +217,7 @@ impl AuthData {
             scope,
             expires_at: Some(fetched_at + Duration::seconds(expires_in)),
             refresh_token,
+            redirect_uri,
         }
     }
 
@@ -211,5 +227,9 @@ impl AuthData {
         } else {
             true
         }
+    }
+
+    fn default_redirect_uri() -> String {
+        REDIRECT_URI.to_owned()
     }
 }

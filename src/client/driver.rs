@@ -199,8 +199,12 @@ impl TlClient {
         self.auth.client_id()
     }
 
-    pub async fn authenticate(&self, access_code: Secret<String>) -> Result<()> {
-        self.auth.authenticate(access_code).await?;
+    pub async fn authenticate(
+        &self,
+        access_code: Secret<String>,
+        redirect_uri: &str,
+    ) -> Result<()> {
+        self.auth.authenticate(access_code, redirect_uri).await?;
 
         Ok(())
     }
