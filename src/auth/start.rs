@@ -5,7 +5,7 @@ use askama::Template;
 use axum::{
     extract::State,
     http::uri,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Response},
     routing::get,
     Router,
 };
@@ -13,6 +13,8 @@ use hyper::Uri;
 use tracing::info;
 
 use crate::{auth::WebResult, Environment, TlClient};
+
+use super::WebError;
 
 #[derive(Clone)]
 pub(crate) struct StartState {
@@ -26,6 +28,9 @@ struct StartTemplate {
     url: hyper::Uri,
 }
 
+#[derive(Debug)]
+struct AskamaTemplate<T>(T);
+
 pub(crate) fn routes(client: Arc<TlClient>, base_url: Uri) -> Router {
     Router::new()
         .route("/", get(index))
@@ -35,7 +40,7 @@ pub(crate) fn routes(client: Arc<TlClient>, base_url: Uri) -> Router {
 // #[debug_handler]
 async fn index(State(state): State<StartState>) -> WebResult<impl IntoResponse> {
     let template = state.handle_index()?;
-    Ok(Html(template.render().map_err(anyhow::Error::from)?))
+    Ok(AskamaTemplate(template))
 }
 
 impl StartState {
@@ -87,5 +92,14 @@ impl StartState {
             .map_err(anyhow::Error::from)?;
         let template = StartTemplate { url: u };
         Ok(template)
+    }
+}
+
+impl<T: Template> IntoResponse for AskamaTemplate<T> {
+    fn into_response(self) -> Response {
+        match self.0.render() {
+            Ok(html) => Html(html).into_response(),
+            Err(err) => WebError::from(anyhow::Error::from(err)).into_response(),
+        }
     }
 }
