@@ -17,7 +17,7 @@ use crate::{auth::WebResult, Environment, TlClient};
 use super::WebError;
 
 #[derive(Clone)]
-pub(crate) struct StartState {
+pub(crate) struct Start {
     client: Arc<TlClient>,
     base_url: Uri,
 }
@@ -33,18 +33,17 @@ struct AskamaTemplate<T>(T);
 
 pub(crate) fn routes(client: Arc<TlClient>, base_url: Uri) -> Router {
     Router::new()
-        .route("/", get(index))
-        .with_state(StartState { client, base_url })
+        .route("/", get(Start::index))
+        .with_state(Start { client, base_url })
 }
 
 // #[debug_handler]
-async fn index(State(state): State<StartState>) -> WebResult<impl IntoResponse> {
-    let template = state.handle_index()?;
-    Ok(AskamaTemplate(template))
-}
+impl Start {
+    async fn index(State(state): State<Start>) -> WebResult<impl IntoResponse> {
+        Ok(state.handle_index()?)
+    }
 
-impl StartState {
-    fn handle_index(&self) -> Result<StartTemplate> {
+    fn handle_index(&self) -> Result<impl IntoResponse> {
         let host = match self.client.env() {
             Environment::Sandbox => "auth.truelayer-sandbox.com",
             Environment::Live => "auth.truelayer.com",
@@ -91,7 +90,7 @@ impl StartState {
             .build()
             .map_err(anyhow::Error::from)?;
         let template = StartTemplate { url: u };
-        Ok(template)
+        Ok(AskamaTemplate(template))
     }
 }
 
