@@ -4,11 +4,12 @@ use secrecy::{ExposeSecret, Secret, Zeroize};
 use serde::{de::DeserializeOwned, Serialize, Serializer};
 use tracing::{debug, error};
 
-mod authentication;
+mod auth;
 mod client;
 mod join_pool;
 mod sync;
 
+pub use auth::authenticate;
 pub use client::{Environment, TlClient};
 pub use join_pool::{JobHandle, JobPool};
 pub use sync::{sync_accounts, sync_cards, sync_info};

@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
-use crate::{authentication::Authenticator, perform_request};
+use crate::{client::authentication::Authenticator, perform_request};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -172,7 +172,6 @@ const SANDBOX_API_HOST: &str = "api.truelayer-sandbox.com";
 const SANDBOX_AUTH_HOST: &str = "auth.truelayer-sandbox.com";
 const LIVE_API_HOST: &str = "api.truelayer.com";
 const LIVE_AUTH_HOST: &str = "auth.truelayer.com";
-pub(crate) const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
 
 impl TlClient {
     pub fn new(
@@ -193,8 +192,19 @@ impl TlClient {
         Self { client, env, auth }
     }
 
-    pub async fn authenticate(&self, access_code: Secret<String>) -> Result<()> {
-        self.auth.authenticate(access_code).await?;
+    pub fn env(&self) -> Environment {
+        self.env.clone()
+    }
+    pub fn client_id(&self) -> &str {
+        self.auth.client_id()
+    }
+
+    pub async fn authenticate(
+        &self,
+        access_code: Secret<String>,
+        redirect_uri: &str,
+    ) -> Result<()> {
+        self.auth.authenticate(access_code, redirect_uri).await?;
 
         Ok(())
     }

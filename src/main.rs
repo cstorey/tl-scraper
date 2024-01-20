@@ -28,10 +28,7 @@ struct ClientCreds {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Auth {
-        #[clap(short = 't', long = "access-code")]
-        access_code: SecretString,
-    },
+    Auth {},
     Info {},
     Accounts {},
     AccountBalance {
@@ -107,9 +104,7 @@ async fn run() -> Result<()> {
     ));
 
     match opts.command {
-        Commands::Auth { access_code } => {
-            tl.authenticate(access_code).await?;
-        }
+        Commands::Auth {} => tl_scraper::authenticate(tl).await?,
         Commands::Info {} => {
             let info_response = tl.fetch_info().await?;
 

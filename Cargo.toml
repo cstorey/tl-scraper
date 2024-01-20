@@ -23,3 +23,7 @@ urlencoding = "2.1.3"
 rust_decimal = "1.33.1"
 futures = "0.3.30"
 clap = { version = "4.4.16", features = ["derive"] }
+axum = { version = "0.7.4", features = ["macros"] }
+tokio-util = "0.7.10"
+url = "2.5.0"
+askama = { version = "0.12.1" }

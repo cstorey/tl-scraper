@@ -1,0 +1,58 @@
+use std::{net::IpAddr, sync::Arc};
+
+use anyhow::Context;
+use axum::{
+    http::uri::{Scheme, Uri},
+    response::{IntoResponse, Response},
+    Router,
+};
+use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info};
+
+use crate::TlClient;
+
+mod start;
+
+struct WebError(anyhow::Error);
+
+type WebResult<T> = std::result::Result<T, WebError>;
+
+pub async fn authenticate(client: Arc<TlClient>) -> anyhow::Result<()> {
+    let cnx = CancellationToken::new();
+
+    let listener = TcpListener::bind((IpAddr::from([127, 0, 0, 1]), 5500))
+        .await
+        .context("Bind to port")?;
+
+    let listen_address = listener.local_addr().context("listen address")?;
+    let base_url = Uri::builder()
+        .scheme(Scheme::HTTP)
+        .authority(listen_address.to_string())
+        .path_and_query("")
+        .build()
+        .context("Build base URI")?;
+    let app = Router::new().merge(start::routes(cnx.clone(), client.clone(), base_url));
+
+    eprintln!("Please visit http://{}/", listen_address,);
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(cnx.clone().cancelled_owned())
+        .await
+        .context("Running server")?;
+    info!("Done!");
+    Ok(())
+}
+
+impl IntoResponse for WebError {
+    fn into_response(self) -> Response {
+        error!(error=?self.0, "Error handling request");
+        "Error handling response".into_response()
+    }
+}
+
+impl From<anyhow::Error> for WebError {
+    fn from(value: anyhow::Error) -> Self {
+        Self(value)
+    }
+}

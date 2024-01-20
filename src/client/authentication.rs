@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tracing::{debug, info};
 
-use crate::{client::REDIRECT_URI, Environment};
+use crate::Environment;
 use crate::{perform_request, serialize_optional_secret, serialize_secret};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,6 +71,9 @@ pub struct AuthData {
     #[serde(serialize_with = "serialize_secret")]
     refresh_token: SecretString,
     scope: Option<String>,
+    // TODO: Remove default once all state migrated
+    #[serde(default = "AuthData::default_redirect_uri")]
+    redirect_uri: String,
 }
 
 impl Authenticator {
@@ -90,12 +93,20 @@ impl Authenticator {
         }
     }
 
-    pub(crate) async fn authenticate(&self, access_code: Secret<String>) -> Result<()> {
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
+    pub(crate) async fn authenticate(
+        &self,
+        access_code: Secret<String>,
+        redirect_uri: &str,
+    ) -> Result<()> {
         let fetched_at = Utc::now();
-        let token_response = self.fetch_access_token(&access_code).await?;
+        let token_response = self.fetch_access_token(&access_code, redirect_uri).await?;
 
         info!(?token_response, "Response");
-        let state = AuthData::from_response(token_response, fetched_at);
+        let state = AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
 
         self.write_auth_data(&state).await?;
 
@@ -115,8 +126,7 @@ impl Authenticator {
         let at = Utc::now();
         if data.is_expired(at) {
             debug!("Access token expired, refreshing");
-            let resp = self.refresh_access_token(&data).await?;
-            data = AuthData::from_response(resp, at);
+            data = self.refresh_access_token(&data, at).await?;
             self.write_auth_data(&data).await?;
         }
 
@@ -126,6 +136,7 @@ impl Authenticator {
     async fn fetch_access_token(
         &self,
         access_code: &Secret<String>,
+        redirect_uri: &str,
     ) -> Result<FetchAccessTokenResponse> {
         let url = self
             .env
@@ -136,7 +147,7 @@ impl Authenticator {
             grant_type: GrantType::AuthorizationCode,
             client_id: self.client_id.to_owned(),
             client_secret: self.client_secret.clone(),
-            redirect_uri: REDIRECT_URI.into(),
+            redirect_uri: redirect_uri.to_owned(),
             code: Some(access_code.clone()),
             refresh_token: None,
         };
@@ -148,7 +159,7 @@ impl Authenticator {
         .await?;
         Ok(token_response)
     }
-    async fn refresh_access_token(&self, data: &AuthData) -> Result<FetchAccessTokenResponse> {
+    async fn refresh_access_token(&self, data: &AuthData, at: DateTime<Utc>) -> Result<AuthData> {
         let url = self
             .env
             .auth_url_builder()
@@ -158,7 +169,7 @@ impl Authenticator {
             grant_type: GrantType::RefreshToken,
             client_id: self.client_id.to_owned(),
             client_secret: self.client_secret.clone(),
-            redirect_uri: REDIRECT_URI.into(),
+            redirect_uri: data.redirect_uri.clone(),
             code: None,
             refresh_token: Some(data.refresh_token.clone()),
         };
@@ -169,7 +180,12 @@ impl Authenticator {
                 .form(&fetch_access_token_request),
         )
         .await?;
-        Ok(token_response)
+
+        Ok(AuthData::from_response(
+            token_response,
+            at,
+            data.redirect_uri.clone(),
+        ))
     }
 
     async fn write_auth_data(&self, state: &AuthData) -> Result<()> {
@@ -183,7 +199,11 @@ impl Authenticator {
 }
 
 impl AuthData {
-    fn from_response(response: FetchAccessTokenResponse, fetched_at: DateTime<Utc>) -> Self {
+    fn from_response(
+        response: FetchAccessTokenResponse,
+        fetched_at: DateTime<Utc>,
+        redirect_uri: String,
+    ) -> Self {
         let FetchAccessTokenResponse {
             access_token,
             token_type,
@@ -198,6 +218,7 @@ impl AuthData {
             scope,
             expires_at: Some(fetched_at + Duration::seconds(expires_in)),
             refresh_token,
+            redirect_uri,
         }
     }
 
@@ -207,5 +228,10 @@ impl AuthData {
         } else {
             true
         }
+    }
+
+    fn default_redirect_uri() -> String {
+        const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
+        REDIRECT_URI.to_owned()
     }
 }
