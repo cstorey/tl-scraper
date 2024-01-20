@@ -119,8 +119,7 @@ impl Authenticator {
         let at = Utc::now();
         if data.is_expired(at) {
             debug!("Access token expired, refreshing");
-            let resp = self.refresh_access_token(&data).await?;
-            data = AuthData::from_response(resp, at);
+            data = self.refresh_access_token(&data, at).await?;
             self.write_auth_data(&data).await?;
         }
 
@@ -152,7 +151,7 @@ impl Authenticator {
         .await?;
         Ok(token_response)
     }
-    async fn refresh_access_token(&self, data: &AuthData) -> Result<FetchAccessTokenResponse> {
+    async fn refresh_access_token(&self, data: &AuthData, at: DateTime<Utc>) -> Result<AuthData> {
         let url = self
             .env
             .auth_url_builder()
@@ -173,7 +172,8 @@ impl Authenticator {
                 .form(&fetch_access_token_request),
         )
         .await?;
-        Ok(token_response)
+
+        Ok(AuthData::from_response(token_response, at))
     }
 
     async fn write_auth_data(&self, state: &AuthData) -> Result<()> {
