@@ -8,7 +8,7 @@ use axum::{
 };
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::TlClient;
 
@@ -32,7 +32,7 @@ pub async fn authenticate(client: Arc<TlClient>) -> anyhow::Result<()> {
         .path_and_query("")
         .build()
         .context("Build base URI")?;
-    let app = Router::new().merge(start::routes(client.clone(), base_url));
+    let app = Router::new().merge(start::routes(cnx.clone(), client.clone(), base_url));
 
     eprintln!("Please visit http://{}/", listen_address,);
 
@@ -40,6 +40,7 @@ pub async fn authenticate(client: Arc<TlClient>) -> anyhow::Result<()> {
         .with_graceful_shutdown(cnx.clone().cancelled_owned())
         .await
         .context("Running server")?;
+    info!("Done!");
     Ok(())
 }
 

@@ -3,14 +3,17 @@ use std::{borrow::Cow, collections::HashMap, sync::Arc};
 use anyhow::{anyhow, Context, Result};
 use askama::Template;
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::uri,
     response::{Html, IntoResponse, Response},
     routing::get,
     Router,
 };
 use hyper::Uri;
-use tracing::info;
+use secrecy::SecretString;
+use serde::Deserialize;
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, info};
 
 use crate::{auth::WebResult, Environment, TlClient};
 
@@ -20,6 +23,7 @@ use super::WebError;
 pub(crate) struct Start {
     client: Arc<TlClient>,
     base_url: Uri,
+    cnx: CancellationToken,
 }
 
 #[derive(Template)]
@@ -28,13 +32,24 @@ struct StartTemplate {
     url: hyper::Uri,
 }
 
+#[derive(Debug, Deserialize)]
+struct RedirectToken {
+    code: SecretString,
+    // Also state, scope
+}
+
 #[derive(Debug)]
 struct AskamaTemplate<T>(T);
 
-pub(crate) fn routes(client: Arc<TlClient>, base_url: Uri) -> Router {
+pub(crate) fn routes(cnx: CancellationToken, client: Arc<TlClient>, base_url: Uri) -> Router {
     Router::new()
         .route("/", get(Start::index))
-        .with_state(Start { client, base_url })
+        .route("/start-redirect", get(Start::redirect))
+        .with_state(Start {
+            client,
+            base_url,
+            cnx,
+        })
 }
 
 // #[debug_handler]
@@ -53,22 +68,7 @@ impl Start {
             Environment::Sandbox => "uk-cs-mock uk-ob-all uk-oauth-all",
             Environment::Live => "uk-ob-all uk-oauth-all",
         };
-        let redirect_url = Uri::builder()
-            .scheme(
-                self.base_url
-                    .scheme()
-                    .cloned()
-                    .ok_or(anyhow!("Base URL missing scheme: {}", self.base_url))?,
-            )
-            .authority(
-                self.base_url
-                    .authority()
-                    .cloned()
-                    .ok_or(anyhow!("Base URL missing authority: {}", self.base_url))?,
-            )
-            .path_and_query("/start-redirect")
-            .build()
-            .context("Build redirect URI")?;
+        let redirect_url = self.redirect_uri()?;
 
         info!(%redirect_url);
 
@@ -91,6 +91,45 @@ impl Start {
             .map_err(anyhow::Error::from)?;
         let template = StartTemplate { url: u };
         Ok(AskamaTemplate(template))
+    }
+
+    fn redirect_uri(&self) -> Result<Uri, anyhow::Error> {
+        let uri = Uri::builder()
+            .scheme(
+                self.base_url
+                    .scheme()
+                    .cloned()
+                    .ok_or(anyhow!("Base URL missing scheme: {}", self.base_url))?,
+            )
+            .authority(
+                self.base_url
+                    .authority()
+                    .cloned()
+                    .ok_or(anyhow!("Base URL missing authority: {}", self.base_url))?,
+            )
+            .path_and_query("/start-redirect")
+            .build()
+            .context("Build redirect URI")?;
+        Ok(uri)
+    }
+
+    async fn redirect(
+        State(state): State<Start>,
+        Query(RedirectToken { code }): Query<RedirectToken>,
+    ) -> WebResult<impl IntoResponse> {
+        Ok(state.handle_redirect(code).await?)
+    }
+
+    async fn handle_redirect(&self, code: SecretString) -> Result<impl IntoResponse> {
+        let redirect_uri = self.redirect_uri()?;
+        debug!("Got code; authenticating…");
+        self.client
+            .authenticate(code, &redirect_uri.to_string())
+            .await
+            .context("Authenticate to Truelayer")?;
+        info!("Authenticated! Shutting down server");
+        self.cnx.cancel();
+        Ok("Done!")
     }
 }
 
