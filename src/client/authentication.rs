@@ -119,15 +119,7 @@ impl Authenticator {
     }
 
     pub(crate) async fn access_token(&self) -> Result<SecretString> {
-        let token_path = self.token_path.to_owned();
-        let data: AuthData = spawn_blocking(move || match File::open(&token_path) {
-            Ok(f) => Ok(serde_json::from_reader(f)?),
-            Err(e) if e.kind() == ErrorKind::NotFound => {
-                bail!("No cached authentication token: {:?}", token_path)
-            }
-            Err(e) => Err(e.into()),
-        })
-        .await??;
+        let data = self.read_auth_data().await?;
 
         let at = Utc::now();
         if !data.is_expired(at) {
@@ -167,6 +159,7 @@ impl Authenticator {
         .await?;
         Ok(token_response)
     }
+
     async fn refresh_access_token(&self, data: &AuthData, at: DateTime<Utc>) -> Result<AuthData> {
         let url = self
             .env
@@ -194,6 +187,19 @@ impl Authenticator {
             at,
             data.redirect_uri.clone(),
         ))
+    }
+
+    async fn read_auth_data(&self) -> Result<AuthData, anyhow::Error> {
+        let token_path = self.token_path.to_owned();
+        let data: AuthData = spawn_blocking(move || match File::open(&token_path) {
+            Ok(f) => Ok(serde_json::from_reader(f)?),
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                bail!("No cached authentication token: {:?}", token_path)
+            }
+            Err(e) => Err(e.into()),
+        })
+        .await??;
+        Ok(data)
     }
 
     async fn write_auth_data(&self, state: &AuthData) -> Result<()> {
