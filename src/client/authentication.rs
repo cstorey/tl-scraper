@@ -64,7 +64,7 @@ pub(crate) struct Authenticator {
     env: Environment,
     token_path: PathBuf,
     credentials: ClientCreds,
-    cached_access_token: Mutex<Option<SecretString>>,
+    cached_auth_data: Mutex<Option<AuthData>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,7 +93,7 @@ impl Authenticator {
             env,
             token_path,
             credentials: credentials.clone(),
-            cached_access_token: Mutex::new(None),
+            cached_auth_data: Mutex::new(None),
         }
     }
 
@@ -122,24 +122,27 @@ impl Authenticator {
 
     #[instrument(skip_all)]
     pub(crate) async fn access_token(&self) -> Result<SecretString> {
-        let mut cached_access_token = self.cached_access_token.lock().await;
-        if let Some(access_token) = cached_access_token.as_ref() {
-            trace!("Re-used cached access token");
-            return Ok(access_token.clone());
+        let mut cached_auth_data = self.cached_auth_data.lock().await;
+        let at: DateTime<Utc> = Utc::now();
+
+        if let Some(data) = cached_auth_data.as_ref() {
+            if !data.is_expired(at) {
+                trace!("Re-used cached access token");
+                return Ok(data.access_token.clone());
+            }
         }
         let data = self.read_auth_data().await?;
 
-        let at = Utc::now();
         if !data.is_expired(at) {
             trace!("Re-used read access token");
-            *cached_access_token = Some(data.access_token.clone());
+            *cached_auth_data = Some(data.clone());
             return Ok(data.access_token);
         }
 
         debug!("Access token expired, refreshing");
         let data = self.refresh_access_token(&data, at).await?;
         self.write_auth_data(&data).await?;
-        *cached_access_token = Some(data.access_token.clone());
+        *cached_auth_data = Some(data.clone());
 
         Ok(data.access_token)
     }
