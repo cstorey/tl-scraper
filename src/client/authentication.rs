@@ -10,8 +10,8 @@ use reqwest::Client;
 use secrecy::{Secret, SecretString};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
-use tokio::task::spawn_blocking;
-use tracing::{debug, info};
+use tokio::{sync::Mutex, task::spawn_blocking};
+use tracing::{debug, info, instrument, trace, Span};
 
 use crate::Environment;
 use crate::{perform_request, serialize_optional_secret, serialize_secret};
@@ -64,6 +64,7 @@ pub(crate) struct Authenticator {
     env: Environment,
     token_path: PathBuf,
     credentials: ClientCreds,
+    cached_access_token: Mutex<Option<SecretString>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +93,7 @@ impl Authenticator {
             env,
             token_path,
             credentials: credentials.clone(),
+            cached_access_token: Mutex::new(None),
         }
     }
 
@@ -118,24 +120,26 @@ impl Authenticator {
         Ok(())
     }
 
+    #[instrument(skip_all)]
     pub(crate) async fn access_token(&self) -> Result<SecretString> {
-        let token_path = self.token_path.to_owned();
-        let mut data: AuthData = spawn_blocking(move || match File::open(&token_path) {
-            Ok(f) => Ok(serde_json::from_reader(f)?),
-            Err(e) if e.kind() == ErrorKind::NotFound => {
-                bail!("No cached authentication token: {:?}", token_path)
-            }
-            Err(e) => Err(e.into()),
-        })
-        .await??;
-
-        // TODO: Check expiry
-        let at = Utc::now();
-        if data.is_expired(at) {
-            debug!("Access token expired, refreshing");
-            data = self.refresh_access_token(&data, at).await?;
-            self.write_auth_data(&data).await?;
+        let mut cached_access_token = self.cached_access_token.lock().await;
+        if let Some(access_token) = cached_access_token.as_ref() {
+            trace!("Re-used cached access token");
+            return Ok(access_token.clone());
         }
+        let data = self.read_auth_data().await?;
+
+        let at = Utc::now();
+        if !data.is_expired(at) {
+            trace!("Re-used read access token");
+            *cached_access_token = Some(data.access_token.clone());
+            return Ok(data.access_token);
+        }
+
+        debug!("Access token expired, refreshing");
+        let data = self.refresh_access_token(&data, at).await?;
+        self.write_auth_data(&data).await?;
+        *cached_access_token = Some(data.access_token.clone());
 
         Ok(data.access_token)
     }
@@ -166,6 +170,7 @@ impl Authenticator {
         .await?;
         Ok(token_response)
     }
+
     async fn refresh_access_token(&self, data: &AuthData, at: DateTime<Utc>) -> Result<AuthData> {
         let url = self
             .env
@@ -195,10 +200,29 @@ impl Authenticator {
         ))
     }
 
+    async fn read_auth_data(&self) -> Result<AuthData, anyhow::Error> {
+        let token_path = self.token_path.to_owned();
+
+        let data: AuthData = spawn_blocking(move || match File::open(&token_path) {
+            Ok(f) => Ok(serde_json::from_reader(f)?),
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                bail!("No cached authentication token: {:?}", token_path)
+            }
+            Err(e) => Err(e.into()),
+        })
+        .await??;
+
+        debug!(token_path=?self.token_path, "Read access token");
+
+        Ok(data)
+    }
+
     async fn write_auth_data(&self, state: &AuthData) -> Result<()> {
         let state = state.clone();
         let token_path = self.token_path.to_owned();
+        let span = Span::current();
         spawn_blocking(move || {
+            let _entered = span.enter();
             let mut tmpf = NamedTempFile::new_in(".")?;
             serde_json::to_writer_pretty(&mut tmpf, &state)?;
             tmpf.as_file_mut().flush()?;
