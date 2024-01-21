@@ -129,7 +129,6 @@ impl Authenticator {
         })
         .await??;
 
-        // TODO: Check expiry
         let at = Utc::now();
         if data.is_expired(at) {
             debug!("Access token expired, refreshing");
