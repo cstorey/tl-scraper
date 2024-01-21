@@ -1,8 +1,9 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fs::File, path::PathBuf};
 
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::Environment;
+use crate::{ClientCreds, Environment};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MainConfig {
@@ -24,4 +25,33 @@ pub struct ProviderConfig {
 pub struct ScraperConfig {
     pub main: MainConfig,
     pub providers: HashMap<String, ProviderConfig>,
+}
+impl ScraperConfig {
+    pub fn credentials(&self) -> Result<ClientCreds> {
+        let rdr = File::open(&self.main.client_credentials).with_context(|| {
+            format!(
+                "Opening client credentials: {:?}",
+                self.main.client_credentials
+            )
+        })?;
+        let client_creds = serde_json::from_reader(rdr).with_context(|| {
+            format!(
+                "Decoding client credentials: {:?}",
+                self.main.client_credentials
+            )
+        })?;
+        Ok(client_creds)
+    }
+
+    pub fn provider(&self, name: &str) -> Result<&ProviderConfig> {
+        if let Some(provider) = self.providers.get(name) {
+            Ok(provider)
+        } else {
+            Err(anyhow!(
+                "Provider not found: {}, known: {:?}",
+                name,
+                self.providers.keys().collect::<Vec<_>>()
+            ))
+        }
+    }
 }

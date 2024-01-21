@@ -1,6 +1,6 @@
 use std::{net::IpAddr, sync::Arc};
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use axum::{
     http::uri::{Scheme, Uri},
     response::{IntoResponse, Response},
@@ -10,7 +10,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-use crate::TlClient;
+use crate::{ClientCreds, Environment, ProviderConfig, TlClient};
 
 mod start;
 
@@ -18,8 +18,19 @@ struct WebError(anyhow::Error);
 
 type WebResult<T> = std::result::Result<T, WebError>;
 
-pub async fn authenticate(client: Arc<TlClient>) -> anyhow::Result<()> {
+pub async fn authenticate(
+    client: &reqwest::Client,
+    environment: Environment,
+    provider: &ProviderConfig,
+    client_creds: &ClientCreds,
+) -> Result<()> {
     let cnx = CancellationToken::new();
+    let tl = Arc::new(TlClient::new(
+        client.clone(),
+        environment,
+        &provider.user_token,
+        client_creds,
+    ));
 
     let listener = TcpListener::bind((IpAddr::from([127, 0, 0, 1]), 5500))
         .await
@@ -32,7 +43,7 @@ pub async fn authenticate(client: Arc<TlClient>) -> anyhow::Result<()> {
         .path_and_query("")
         .build()
         .context("Build base URI")?;
-    let app = Router::new().merge(start::routes(cnx.clone(), client.clone(), base_url));
+    let app = Router::new().merge(start::routes(cnx.clone(), tl.clone(), base_url));
 
     eprintln!("Please visit http://{}/", listen_address,);
 

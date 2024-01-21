@@ -1,40 +1,38 @@
-use std::{fs::File, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use futures::TryFutureExt;
-use secrecy::SecretString;
-use serde::Deserialize;
+use reqwest::Client;
 use tokio::try_join;
 use tracing::{debug, instrument, Instrument, Span};
 
-use tl_scraper::{JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient};
+use tl_scraper::{
+    ClientCreds, Environment, JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient,
+};
 
 #[derive(Debug, Parser)]
 struct Options {
     #[clap(short = 'c', long = "config")]
     config: PathBuf,
-    #[clap(short = 'p', long = "provider")]
-    provider: String,
     #[clap(subcommand)]
     command: Commands,
 }
 
-#[derive(Debug, Deserialize)]
-struct ClientCreds {
-    id: String,
-    secret: SecretString,
-}
-
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Auth {},
+    Auth {
+        #[clap(short = 'p', long = "provider")]
+        provider: String,
+    },
     Sync(Sync),
 }
 
 #[derive(Debug, Parser)]
 struct Sync {
+    #[clap(short = 'p', long = "provider")]
+    provider: Vec<String>,
     from_date: NaiveDate,
     to_date: NaiveDate,
     #[clap(short = 't', long = "concurrent-tasks")]
@@ -67,63 +65,74 @@ async fn run() -> Result<()> {
         toml::from_str(&content).context("Parse toml")?
     };
 
-    let client_creds: ClientCreds = {
-        let rdr = File::open(&config.main.client_credentials).with_context(|| {
-            format!(
-                "Opening client credentials: {:?}",
-                config.main.client_credentials
-            )
-        })?;
-        serde_json::from_reader(rdr).with_context(|| {
-            format!(
-                "Decoding client credentials: {:?}",
-                config.main.client_credentials
-            )
-        })?
-    };
-
-    let provider = config.providers.get(&opts.provider).ok_or_else(|| {
-        anyhow!(
-            "Provider not found: {}, known: {:?}",
-            opts.provider,
-            config.providers.keys().collect::<Vec<_>>()
-        )
-    })?;
+    let client_creds = config.credentials()?;
 
     let client = reqwest::Client::new();
 
-    let tl = Arc::new(TlClient::new(
-        client,
-        config.main.environment,
-        &provider.user_token,
-        client_creds.id,
-        client_creds.secret,
-    ));
-
     match opts.command {
-        Commands::Auth {} => tl_scraper::authenticate(tl).await?,
-        Commands::Sync(sync_opts) => {
+        Commands::Auth { provider } => {
+            let provider: &ProviderConfig = config.provider(&provider)?;
+            tl_scraper::authenticate(&client, config.main.environment, provider, &client_creds)
+                .await?;
+        }
+        Commands::Sync(ref sync_opts) => {
             let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));
 
             try_join!(
                 pool.run().map_err(|e| e.context("Job pool")),
-                sync(tl, sync_opts, provider, handle).map_err(|e| e.context("Sync scheduler")),
+                sync_all(client, sync_opts, &config, &client_creds, handle),
             )?;
         }
     };
     Ok(())
 }
 
-#[instrument(skip_all)]
+async fn sync_all(
+    client: Client,
+    sync_opts: &Sync,
+    config: &ScraperConfig,
+    client_creds: &ClientCreds,
+    handle: JobHandle,
+) -> Result<()> {
+    for provider_name in sync_opts.provider.iter() {
+        let provider: &ProviderConfig = config.provider(provider_name)?;
+
+        sync(
+            client.clone(),
+            config.main.environment,
+            sync_opts,
+            provider_name,
+            provider,
+            client_creds,
+            handle.clone(),
+        )
+        .await
+        .with_context(|| format!("Sync scheduler: {}", &provider_name))?;
+    }
+    drop(handle);
+    Ok(())
+}
+
+#[instrument(skip_all, fields(provider=%provider_name))]
 async fn sync(
-    tl: Arc<TlClient>,
+    client: Client,
+    environment: Environment,
     Sync {
         from_date, to_date, ..
-    }: Sync,
+    }: &Sync,
+    provider_name: &str,
     provider: &ProviderConfig,
+    client_creds: &ClientCreds,
     handle: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
+    let tl = Arc::new(TlClient::new(
+        client,
+        environment,
+        &provider.user_token,
+        client_creds,
+    ));
+
     if provider.scrape_info {
         debug!("Scraping info");
         handle.spawn(
@@ -136,7 +145,7 @@ async fn sync(
             tl_scraper::sync_accounts(
                 tl.clone(),
                 target_dir.clone(),
-                from_date..=to_date,
+                *from_date..=*to_date,
                 handle.clone(),
             )
             .instrument(Span::current()),
@@ -148,7 +157,7 @@ async fn sync(
             tl_scraper::sync_cards(
                 tl.clone(),
                 target_dir.clone(),
-                from_date..=to_date,
+                *from_date..=*to_date,
                 handle.clone(),
             )
             .instrument(Span::current()),

@@ -52,12 +52,17 @@ pub struct FetchAccessTokenResponse {
     scope: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientCreds {
+    id: String,
+    secret: SecretString,
+}
+
 pub(crate) struct Authenticator {
     client: Client,
     env: Environment,
     token_path: PathBuf,
-    client_id: String,
-    client_secret: SecretString,
+    credentials: ClientCreds,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,20 +86,18 @@ impl Authenticator {
         client: Client,
         env: Environment,
         token_path: PathBuf,
-        client_id: String,
-        client_secret: Secret<String>,
+        credentials: &ClientCreds,
     ) -> Authenticator {
         Self {
             client,
             env,
             token_path,
-            client_id,
-            client_secret,
+            credentials: credentials.clone(),
         }
     }
 
     pub fn client_id(&self) -> &str {
-        &self.client_id
+        &self.credentials.id
     }
 
     pub(crate) async fn authenticate(
@@ -145,8 +148,8 @@ impl Authenticator {
             .build()?;
         let fetch_access_token_request = FetchAccessTokenRequest {
             grant_type: GrantType::AuthorizationCode,
-            client_id: self.client_id.to_owned(),
-            client_secret: self.client_secret.clone(),
+            client_id: self.credentials.id.clone(),
+            client_secret: self.credentials.secret.clone(),
             redirect_uri: redirect_uri.to_owned(),
             code: Some(access_code.clone()),
             refresh_token: None,
@@ -167,8 +170,8 @@ impl Authenticator {
             .build()?;
         let fetch_access_token_request = FetchAccessTokenRequest {
             grant_type: GrantType::RefreshToken,
-            client_id: self.client_id.to_owned(),
-            client_secret: self.client_secret.clone(),
+            client_id: self.credentials.id.to_owned(),
+            client_secret: self.credentials.secret.clone(),
             redirect_uri: data.redirect_uri.clone(),
             code: None,
             refresh_token: Some(data.refresh_token.clone()),
