@@ -79,11 +79,10 @@ async fn run() -> Result<()> {
             tl_scraper::authenticate(&client, config.main.environment, provider, client_creds)
                 .await?;
         }
-        Commands::Sync(sync_opts) => {
+        Commands::Sync(ref sync_opts) => {
             let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));
 
-            try_join!(
-                pool.run().map_err(|e| e.context("Job pool")),
+            try_join!(pool.run().map_err(|e| e.context("Job pool")), async {
                 sync(
                     client,
                     config.main.environment,
@@ -93,8 +92,10 @@ async fn run() -> Result<()> {
                     client_creds,
                     handle,
                 )
-                .map_err(|e| e.context("Sync scheduler")),
-            )?;
+                .await
+                .with_context(|| format!("Sync scheduler: {}", &opts.provider))?;
+                Ok(())
+            })?;
         }
     };
     Ok(())
@@ -106,7 +107,7 @@ async fn sync(
     environment: Environment,
     Sync {
         from_date, to_date, ..
-    }: Sync,
+    }: &Sync,
     provider_name: &str,
     provider: &ProviderConfig,
     client_creds: ClientCreds,
@@ -132,7 +133,7 @@ async fn sync(
             tl_scraper::sync_accounts(
                 tl.clone(),
                 target_dir.clone(),
-                from_date..=to_date,
+                *from_date..=*to_date,
                 handle.clone(),
             )
             .instrument(Span::current()),
@@ -144,7 +145,7 @@ async fn sync(
             tl_scraper::sync_cards(
                 tl.clone(),
                 target_dir.clone(),
-                from_date..=to_date,
+                *from_date..=*to_date,
                 handle.clone(),
             )
             .instrument(Span::current()),
