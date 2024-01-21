@@ -88,6 +88,7 @@ async fn run() -> Result<()> {
                     client,
                     config.main.environment,
                     sync_opts,
+                    &opts.provider,
                     provider,
                     client_creds,
                     handle,
@@ -99,13 +100,14 @@ async fn run() -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(provider=%provider_name))]
 async fn sync(
     client: Client,
     environment: Environment,
     Sync {
         from_date, to_date, ..
     }: Sync,
+    provider_name: &str,
     provider: &ProviderConfig,
     client_creds: ClientCreds,
     handle: JobHandle,
