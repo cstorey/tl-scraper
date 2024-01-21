@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::File, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{ClientCreds, Environment};
@@ -41,5 +41,17 @@ impl ScraperConfig {
             )
         })?;
         Ok(client_creds)
+    }
+
+    pub fn provider(&self, name: &str) -> Result<&ProviderConfig> {
+        if let Some(provider) = self.providers.get(name) {
+            Ok(provider)
+        } else {
+            Err(anyhow!(
+                "Provider not found: {}, known: {:?}",
+                name,
+                self.providers.keys().collect::<Vec<_>>()
+            ))
+        }
     }
 }

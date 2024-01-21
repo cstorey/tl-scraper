@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use futures::TryFutureExt;
@@ -16,20 +16,23 @@ use tl_scraper::{
 struct Options {
     #[clap(short = 'c', long = "config")]
     config: PathBuf,
-    #[clap(short = 'p', long = "provider")]
-    provider: String,
     #[clap(subcommand)]
     command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Auth {},
+    Auth {
+        #[clap(short = 'p', long = "provider")]
+        provider: String,
+    },
     Sync(Sync),
 }
 
 #[derive(Debug, Parser)]
 struct Sync {
+    #[clap(short = 'p', long = "provider")]
+    provider: Vec<String>,
     from_date: NaiveDate,
     to_date: NaiveDate,
     #[clap(short = 't', long = "concurrent-tasks")]
@@ -64,40 +67,49 @@ async fn run() -> Result<()> {
 
     let client_creds = config.credentials()?;
 
-    let provider = config.providers.get(&opts.provider).ok_or_else(|| {
-        anyhow!(
-            "Provider not found: {}, known: {:?}",
-            opts.provider,
-            config.providers.keys().collect::<Vec<_>>()
-        )
-    })?;
-
     let client = reqwest::Client::new();
 
     match opts.command {
-        Commands::Auth {} => {
+        Commands::Auth { provider } => {
+            let provider: &ProviderConfig = config.provider(&provider)?;
             tl_scraper::authenticate(&client, config.main.environment, provider, &client_creds)
                 .await?;
         }
         Commands::Sync(ref sync_opts) => {
             let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));
 
-            try_join!(pool.run().map_err(|e| e.context("Job pool")), async {
-                sync(
-                    client,
-                    config.main.environment,
-                    sync_opts,
-                    &opts.provider,
-                    provider,
-                    &client_creds,
-                    handle,
-                )
-                .await
-                .with_context(|| format!("Sync scheduler: {}", &opts.provider))?;
-                Ok(())
-            })?;
+            try_join!(
+                pool.run().map_err(|e| e.context("Job pool")),
+                sync_all(client, sync_opts, &config, &client_creds, handle),
+            )?;
         }
     };
+    Ok(())
+}
+
+async fn sync_all(
+    client: Client,
+    sync_opts: &Sync,
+    config: &ScraperConfig,
+    client_creds: &ClientCreds,
+    handle: JobHandle,
+) -> Result<()> {
+    for provider_name in sync_opts.provider.iter() {
+        let provider: &ProviderConfig = config.provider(provider_name)?;
+
+        sync(
+            client.clone(),
+            config.main.environment,
+            sync_opts,
+            provider_name,
+            provider,
+            client_creds,
+            handle.clone(),
+        )
+        .await
+        .with_context(|| format!("Sync scheduler: {}", &provider_name))?;
+    }
+    drop(handle);
     Ok(())
 }
 
