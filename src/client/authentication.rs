@@ -123,13 +123,16 @@ impl Authenticator {
     #[instrument(skip_all)]
     pub(crate) async fn access_token(&self) -> Result<SecretString> {
         let mut cached_auth_data = self.cached_auth_data.lock().await;
+        let at: DateTime<Utc> = Utc::now();
+
         if let Some(data) = cached_auth_data.as_ref() {
-            trace!("Re-used cached access token");
-            return Ok(data.access_token.clone());
+            if !data.is_expired(at) {
+                trace!("Re-used cached access token");
+                return Ok(data.access_token.clone());
+            }
         }
         let data = self.read_auth_data().await?;
 
-        let at = Utc::now();
         if !data.is_expired(at) {
             trace!("Re-used read access token");
             *cached_auth_data = Some(data.clone());
