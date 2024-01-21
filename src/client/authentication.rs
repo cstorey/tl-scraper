@@ -11,7 +11,7 @@ use secrecy::{Secret, SecretString};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::task::spawn_blocking;
-use tracing::{debug, info};
+use tracing::{debug, info, Span};
 
 use crate::Environment;
 use crate::{perform_request, serialize_optional_secret, serialize_secret};
@@ -198,7 +198,9 @@ impl Authenticator {
     async fn write_auth_data(&self, state: &AuthData) -> Result<()> {
         let state = state.clone();
         let token_path = self.token_path.to_owned();
+        let span = Span::current();
         spawn_blocking(move || {
+            let _entered = span.enter();
             let mut tmpf = NamedTempFile::new_in(".")?;
             serde_json::to_writer_pretty(&mut tmpf, &state)?;
             tmpf.as_file_mut().flush()?;
