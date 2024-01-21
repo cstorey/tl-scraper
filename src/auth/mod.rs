@@ -22,7 +22,7 @@ pub async fn authenticate(
     client: &reqwest::Client,
     environment: Environment,
     provider: &ProviderConfig,
-    client_creds: ClientCreds,
+    client_creds: &ClientCreds,
 ) -> Result<()> {
     let cnx = CancellationToken::new();
     let tl = Arc::new(TlClient::new(

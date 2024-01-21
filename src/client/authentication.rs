@@ -52,7 +52,7 @@ pub struct FetchAccessTokenResponse {
     scope: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ClientCreds {
     id: String,
     secret: SecretString,
@@ -86,13 +86,13 @@ impl Authenticator {
         client: Client,
         env: Environment,
         token_path: PathBuf,
-        credentials: ClientCreds,
+        credentials: &ClientCreds,
     ) -> Authenticator {
         Self {
             client,
             env,
             token_path,
-            credentials,
+            credentials: credentials.clone(),
         }
     }
 

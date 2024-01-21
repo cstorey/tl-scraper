@@ -180,7 +180,7 @@ impl TlClient {
         client: reqwest::Client,
         env: Environment,
         token_path: &Path,
-        credentials: ClientCreds,
+        credentials: &ClientCreds,
     ) -> Self {
         let token_path = token_path.to_owned();
         let auth = Authenticator::new(client.clone(), env, token_path, credentials);

@@ -76,7 +76,7 @@ async fn run() -> Result<()> {
 
     match opts.command {
         Commands::Auth {} => {
-            tl_scraper::authenticate(&client, config.main.environment, provider, client_creds)
+            tl_scraper::authenticate(&client, config.main.environment, provider, &client_creds)
                 .await?;
         }
         Commands::Sync(ref sync_opts) => {
@@ -89,7 +89,7 @@ async fn run() -> Result<()> {
                     sync_opts,
                     &opts.provider,
                     provider,
-                    client_creds,
+                    &client_creds,
                     handle,
                 )
                 .await
@@ -110,7 +110,7 @@ async fn sync(
     }: &Sync,
     provider_name: &str,
     provider: &ProviderConfig,
-    client_creds: ClientCreds,
+    client_creds: &ClientCreds,
     handle: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
