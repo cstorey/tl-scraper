@@ -60,7 +60,7 @@ impl JobPool {
                 ?stats.jobs_completed,
                 "Loop"
             );
-            if self.has_incoming() && tasks.is_empty() {
+            if self.has_terminated() && tasks.is_empty() {
                 break;
             }
 
@@ -98,7 +98,7 @@ impl JobPool {
         }
     }
 
-    fn has_incoming(&self) -> bool {
+    fn has_terminated(&self) -> bool {
         self.has_terminated
     }
 }
