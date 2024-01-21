@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
-use crate::{client::authentication::Authenticator, perform_request};
+use crate::{client::authentication::Authenticator, perform_request, ClientCreds};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -180,17 +180,10 @@ impl TlClient {
         client: reqwest::Client,
         env: Environment,
         token_path: &Path,
-        client_id: String,
-        client_secret: Secret<String>,
+        credentials: ClientCreds,
     ) -> Self {
         let token_path = token_path.to_owned();
-        let auth = Authenticator::new(
-            client.clone(),
-            env.clone(),
-            token_path,
-            client_id,
-            client_secret,
-        );
+        let auth = Authenticator::new(client.clone(), env.clone(), token_path, credentials);
         Self { client, env, auth }
     }
 

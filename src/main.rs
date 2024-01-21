@@ -4,12 +4,10 @@ use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use futures::TryFutureExt;
-use secrecy::SecretString;
-use serde::Deserialize;
 use tokio::try_join;
 use tracing::{debug, instrument, Instrument, Span};
 
-use tl_scraper::{JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient};
+use tl_scraper::{ClientCreds, JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient};
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -19,12 +17,6 @@ struct Options {
     provider: String,
     #[clap(subcommand)]
     command: Commands,
-}
-
-#[derive(Debug, Deserialize)]
-struct ClientCreds {
-    id: String,
-    secret: SecretString,
 }
 
 #[derive(Debug, Subcommand)]
@@ -98,8 +90,7 @@ async fn run() -> Result<()> {
                 client,
                 config.main.environment,
                 &provider.user_token,
-                client_creds.id,
-                client_creds.secret,
+                client_creds,
             ));
             tl_scraper::authenticate(tl).await?
         }
@@ -109,8 +100,7 @@ async fn run() -> Result<()> {
                 client,
                 config.main.environment,
                 &provider.user_token,
-                client_creds.id,
-                client_creds.secret,
+                client_creds,
             ));
 
             try_join!(
