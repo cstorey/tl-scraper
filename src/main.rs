@@ -73,13 +73,8 @@ async fn run() -> Result<()> {
 
     match opts.command {
         Commands::Auth {} => {
-            let tl = Arc::new(TlClient::new(
-                client,
-                config.main.environment,
-                &provider.user_token,
-                client_creds,
-            ));
-            tl_scraper::authenticate(tl).await?
+            tl_scraper::authenticate(&client, config.main.environment, provider, client_creds)
+                .await?;
         }
         Commands::Sync(sync_opts) => {
             let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));
