@@ -3,10 +3,13 @@ use std::{fs::File, path::PathBuf, sync::Arc};
 use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
+use futures::TryFutureExt;
 use secrecy::SecretString;
 use serde::Deserialize;
-use tl_scraper::{JobPool, ProviderConfig, ScraperConfig, TlClient};
+use tokio::try_join;
 use tracing::{debug, instrument, Instrument, Span};
+
+use tl_scraper::{JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient};
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -100,7 +103,12 @@ async fn run() -> Result<()> {
     match opts.command {
         Commands::Auth {} => tl_scraper::authenticate(tl).await?,
         Commands::Sync(sync_opts) => {
-            sync(tl, sync_opts, provider).await?;
+            let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));
+
+            try_join!(
+                pool.run().map_err(|e| e.context("Job pool")),
+                sync(tl, sync_opts, provider, handle).map_err(|e| e.context("Sync scheduler")),
+            )?;
         }
     };
     Ok(())
@@ -110,46 +118,50 @@ async fn run() -> Result<()> {
 async fn sync(
     tl: Arc<TlClient>,
     Sync {
-        from_date,
-        to_date,
-        concurrency,
+        from_date, to_date, ..
     }: Sync,
     provider: &ProviderConfig,
+    handle: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
-    let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
     if provider.scrape_info {
         debug!("Scraping info");
-        handle.spawn(
-            tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).instrument(Span::current()),
-        )?;
+        handle
+            .enqueue(
+                tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir))
+                    .instrument(Span::current()),
+            )
+            .await?;
     }
     if provider.scrape_accounts {
         debug!("Scraping accounts");
-        handle.spawn(
-            tl_scraper::sync_accounts(
-                tl.clone(),
-                target_dir.clone(),
-                from_date..=to_date,
-                handle.clone(),
+        handle
+            .enqueue(
+                tl_scraper::sync_accounts(
+                    tl.clone(),
+                    target_dir.clone(),
+                    from_date..=to_date,
+                    handle.clone(),
+                )
+                .instrument(Span::current()),
             )
-            .instrument(Span::current()),
-        )?;
+            .await?;
     }
     if provider.scrape_cards {
         debug!("Scraping cards");
-        handle.spawn(
-            tl_scraper::sync_cards(
-                tl.clone(),
-                target_dir.clone(),
-                from_date..=to_date,
-                handle.clone(),
+        handle
+            .enqueue(
+                tl_scraper::sync_cards(
+                    tl.clone(),
+                    target_dir.clone(),
+                    from_date..=to_date,
+                    handle.clone(),
+                )
+                .instrument(Span::current()),
             )
-            .instrument(Span::current()),
-        )?;
+            .await?;
     }
     drop(handle);
-    debug!("Waiting for finish");
-    pool.run().await?;
+    debug!("Scheduled sync tasks");
     Ok(())
 }

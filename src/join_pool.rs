@@ -1,13 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use futures::{
-    channel::mpsc, future::BoxFuture, stream::FusedStream, Future, FutureExt, StreamExt,
-};
-use tokio::{
-    sync::{OwnedSemaphorePermit, Semaphore},
-    task::JoinSet,
-};
+use futures::{future::BoxFuture, Future, FutureExt, TryFutureExt};
+use tokio::{sync::mpsc, task::JoinSet};
 use tracing::{instrument, trace};
 
 #[derive(Clone, Debug, Default)]
@@ -18,28 +13,29 @@ struct PoolStats {
 }
 
 pub struct JobPool {
-    semaphore: Arc<Semaphore>,
-    rx: mpsc::UnboundedReceiver<Job>,
+    rx: mpsc::Receiver<Job>,
     stats: Arc<Mutex<PoolStats>>,
+    has_terminated: bool,
+    concurrency: usize,
 }
 
 struct Job(BoxFuture<'static, Result<()>>);
 
 #[derive(Clone)]
 pub struct JobHandle {
-    tx: mpsc::UnboundedSender<Job>,
+    tx: mpsc::Sender<Job>,
     stats: Arc<Mutex<PoolStats>>,
 }
 
 impl JobPool {
-    pub fn new(limit: usize) -> (Self, JobHandle) {
-        let semaphore = Arc::new(Semaphore::new(limit));
-        let (tx, rx) = mpsc::unbounded();
+    pub fn new(concurrency: usize) -> (Self, JobHandle) {
+        let (tx, rx) = mpsc::channel(1);
         let stats = Arc::<Mutex<PoolStats>>::default();
         let pool = JobPool {
             rx,
-            semaphore,
+            concurrency,
             stats: stats.clone(),
+            has_terminated: false,
         };
         let handle = JobHandle { tx, stats };
         (pool, handle)
@@ -49,27 +45,25 @@ impl JobPool {
     pub async fn run(mut self) -> Result<()> {
         let mut tasks = JoinSet::new();
         loop {
-            let available_permits = self.semaphore.available_permits();
             let stats = self.stats.lock().expect("lock").clone();
             trace!(
-                incoming=?!self.rx.is_terminated(),
+                incoming=?!self.has_terminated(),
                 tasks=?tasks.len(),
-                available_permits,
                 ?stats.jobs_submitted,
                 ?stats.jobs_started,
                 ?stats.jobs_completed,
                 "Loop"
             );
-            if self.rx.is_terminated() && tasks.is_empty() {
+            if self.has_terminated() && tasks.is_empty() {
                 break;
             }
 
             tokio::select! {
-                item = self.next_job(), if !self.rx.is_terminated() => {
-                    if let Some((Job(fut), permit)) = item? {
+                item = self.next_job(), if tasks.len() < self.concurrency && !self.has_terminated() => {
+                    if let Some(Job(fut)) = item? {
                         trace!("Spawning job");
                         self.stats.lock().expect("lock").jobs_started += 1;
-                        tasks.spawn(async move { let res = fut.await; drop(permit); res });
+                        tasks.spawn(fut);
                     } else {
                         trace!("Channel closed");
                     }
@@ -87,22 +81,29 @@ impl JobPool {
         Ok(())
     }
 
-    async fn next_job(&mut self) -> Result<Option<(Job, OwnedSemaphorePermit)>> {
-        let permit = self.semaphore.clone().acquire_owned().await?;
-        if let Some(job) = self.rx.next().await {
-            Ok(Some((job, permit)))
+    async fn next_job(&mut self) -> Result<Option<Job>> {
+        if let Some(job) = self.rx.recv().await {
+            Ok(Some(job))
         } else {
-            drop(permit);
+            self.has_terminated = true;
             Ok(None)
         }
+    }
+
+    fn has_terminated(&self) -> bool {
+        self.has_terminated
     }
 }
 
 impl JobHandle {
-    pub fn spawn(&self, fut: impl Future<Output = Result<()>> + Send + 'static) -> Result<()> {
+    pub async fn enqueue(
+        &self,
+        fut: impl Future<Output = Result<()>> + Send + 'static,
+    ) -> Result<()> {
         self.tx
-            .unbounded_send(Job(fut.boxed()))
-            .map_err(|_| anyhow::anyhow!("Pool dropped?"))?;
+            .send(Job(fut.boxed()))
+            .map_err(|_| anyhow::anyhow!("Pool dropped?"))
+            .await?;
         self.stats.lock().expect("lock").jobs_submitted += 1;
 
         Ok(())

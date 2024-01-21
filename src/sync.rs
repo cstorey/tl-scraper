@@ -37,31 +37,36 @@ async fn account(
     account: AccountsResult,
     period: RangeInclusive<NaiveDate>,
 ) -> Result<(), anyhow::Error> {
-    jobs.spawn(
+    jobs.enqueue(
         account_balance(tl.clone(), target_dir.clone(), account.clone())
             .instrument(Span::current()),
-    )?;
-    jobs.spawn(
+    )
+    .await?;
+    jobs.enqueue(
         account_pending(tl.clone(), target_dir.clone(), account.clone())
             .instrument(Span::current()),
-    )?;
+    )
+    .await?;
     for month in months(period) {
-        jobs.spawn(
+        jobs.enqueue(
             account_tx(tl.clone(), target_dir.clone(), account.clone(), month)
                 .instrument(Span::current()),
-        )?;
+        )
+        .await?;
     }
 
     if false {
         // Only available when you've _recently_ authenticated.
-        jobs.spawn(
+        jobs.enqueue(
             account_standing_orders(tl.clone(), target_dir.clone(), account.clone())
                 .instrument(Span::current()),
-        )?;
-        jobs.spawn(
+        )
+        .await?;
+        jobs.enqueue(
             account_direct_debits(tl.clone(), target_dir.clone(), account.clone())
                 .instrument(Span::current()),
-        )?;
+        )
+        .await?;
     }
     Ok(())
 }
@@ -90,16 +95,18 @@ async fn card(
     card: CardsResult,
     period: RangeInclusive<NaiveDate>,
 ) -> Result<(), anyhow::Error> {
-    jobs.spawn(
+    jobs.enqueue(
         card_balance(tl.clone(), target_dir.clone(), card.account_id.clone())
             .instrument(Span::current()),
-    )?;
-    jobs.spawn(
+    )
+    .await?;
+    jobs.enqueue(
         card_pending(tl.clone(), target_dir.clone(), card.account_id.clone())
             .instrument(Span::current()),
-    )?;
+    )
+    .await?;
     for month in months(period) {
-        jobs.spawn(
+        jobs.enqueue(
             card_tx(
                 tl.clone(),
                 target_dir.clone(),
@@ -107,7 +114,8 @@ async fn card(
                 month,
             )
             .instrument(Span::current()),
-        )?
+        )
+        .await?;
     }
     Ok(())
 }
