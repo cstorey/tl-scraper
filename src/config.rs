@@ -13,6 +13,12 @@ pub struct MainConfig {
 pub struct ProviderConfig {
     pub user_token: PathBuf,
     pub target_dir: PathBuf,
+    #[serde(default)]
+    pub scrape_accounts: bool,
+    #[serde(default)]
+    pub scrape_cards: bool,
+    #[serde(default)]
+    pub scrape_info: bool,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScraperConfig {

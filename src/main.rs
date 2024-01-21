@@ -34,12 +34,6 @@ enum Commands {
 struct Sync {
     from_date: NaiveDate,
     to_date: NaiveDate,
-    #[clap(short = 'i', long = "info")]
-    scrape_info: bool,
-    #[clap(short = 'a', long = "accounts")]
-    scrape_accounts: bool,
-    #[clap(short = 'c', long = "cards")]
-    scrape_cards: bool,
     #[clap(short = 't', long = "concurrent-tasks")]
     concurrency: Option<usize>,
 }
@@ -118,22 +112,19 @@ async fn sync(
     Sync {
         from_date,
         to_date,
-        scrape_info,
-        scrape_accounts: accounts,
-        scrape_cards: cards,
         concurrency,
     }: Sync,
     provider: &ProviderConfig,
 ) -> Result<(), anyhow::Error> {
     let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
     let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
-    if scrape_info {
+    if provider.scrape_info {
         debug!("Scraping info");
         handle.spawn(
             tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).instrument(Span::current()),
         )?;
     }
-    if accounts {
+    if provider.scrape_accounts {
         debug!("Scraping accounts");
         handle.spawn(
             tl_scraper::sync_accounts(
@@ -145,7 +136,7 @@ async fn sync(
             .instrument(Span::current()),
         )?;
     }
-    if cards {
+    if provider.scrape_cards {
         debug!("Scraping cards");
         handle.spawn(
             tl_scraper::sync_cards(
