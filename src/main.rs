@@ -5,13 +5,13 @@ use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use secrecy::SecretString;
 use serde::Deserialize;
-use tl_scraper::{Environment, JobPool, TlClient};
+use tl_scraper::{Environment, JobPool, ScraperConfig, TlClient};
 use tracing::{debug, instrument, Instrument, Span};
 
 #[derive(Debug, Parser)]
 struct Options {
-    #[clap(short = 'c', long = "client-credentials")]
-    client_credentials: PathBuf,
+    #[clap(short = 'c', long = "config")]
+    config: PathBuf,
     #[clap(short = 'u', long = "user-token")]
     user_token: PathBuf,
     #[clap(short = 'l', long = "live")]
@@ -68,11 +68,25 @@ async fn main() -> Result<()> {
 async fn run() -> Result<()> {
     let opts = Options::parse();
 
-    let client_creds: ClientCreds =
-        serde_json::from_reader(File::open(&opts.client_credentials).with_context(|| {
-            format!("Opening client credentials: {:?}", opts.client_credentials)
-        })?)
-        .with_context(|| format!("Decoding client credentials: {:?}", opts.client_credentials))?;
+    let config: ScraperConfig = {
+        let content = std::fs::read_to_string(&opts.config).context("Reading config file")?;
+        toml::from_str(&content).context("Parse toml")?
+    };
+
+    let client_creds: ClientCreds = {
+        let rdr = File::open(&config.main.client_credentials).with_context(|| {
+            format!(
+                "Opening client credentials: {:?}",
+                config.main.client_credentials
+            )
+        })?;
+        serde_json::from_reader(rdr).with_context(|| {
+            format!(
+                "Decoding client credentials: {:?}",
+                config.main.client_credentials
+            )
+        })?
+    };
 
     let client = reqwest::Client::new();
 
