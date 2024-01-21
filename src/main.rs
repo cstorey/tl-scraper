@@ -92,18 +92,26 @@ async fn run() -> Result<()> {
 
     let client = reqwest::Client::new();
 
-    let tl = Arc::new(TlClient::new(
-        client,
-        config.main.environment,
-        &provider.user_token,
-        client_creds.id,
-        client_creds.secret,
-    ));
-
     match opts.command {
-        Commands::Auth {} => tl_scraper::authenticate(tl).await?,
+        Commands::Auth {} => {
+            let tl = Arc::new(TlClient::new(
+                client,
+                config.main.environment,
+                &provider.user_token,
+                client_creds.id,
+                client_creds.secret,
+            ));
+            tl_scraper::authenticate(tl).await?
+        }
         Commands::Sync(sync_opts) => {
             let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));
+            let tl = Arc::new(TlClient::new(
+                client,
+                config.main.environment,
+                &provider.user_token,
+                client_creds.id,
+                client_creds.secret,
+            ));
 
             try_join!(
                 pool.run().map_err(|e| e.context("Job pool")),
