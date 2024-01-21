@@ -78,6 +78,8 @@ pub struct AuthData {
     refresh_token: SecretString,
     scope: Option<String>,
     redirect_uri: String,
+    #[serde(default)]
+    authed_at: Option<DateTime<Utc>>,
 }
 
 impl Authenticator {
@@ -108,7 +110,10 @@ impl Authenticator {
         let token_response = self.fetch_access_token(&access_code, redirect_uri).await?;
 
         info!(?token_response, "Response");
-        let state = AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
+        let mut state =
+            AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
+
+        state.authed_at = Some(fetched_at);
 
         self.write_auth_data(&state).await?;
 
@@ -228,6 +233,7 @@ impl AuthData {
             expires_at: Some(fetched_at + Duration::seconds(expires_in)),
             refresh_token,
             redirect_uri,
+            authed_at: None,
         }
     }
 
