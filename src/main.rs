@@ -126,40 +126,33 @@ async fn sync(
     let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
     if provider.scrape_info {
         debug!("Scraping info");
-        handle
-            .enqueue(
-                tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir))
-                    .instrument(Span::current()),
-            )
-            .await?;
+        handle.spawn(
+            tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).instrument(Span::current()),
+        )?;
     }
     if provider.scrape_accounts {
         debug!("Scraping accounts");
-        handle
-            .enqueue(
-                tl_scraper::sync_accounts(
-                    tl.clone(),
-                    target_dir.clone(),
-                    from_date..=to_date,
-                    handle.clone(),
-                )
-                .instrument(Span::current()),
+        handle.spawn(
+            tl_scraper::sync_accounts(
+                tl.clone(),
+                target_dir.clone(),
+                from_date..=to_date,
+                handle.clone(),
             )
-            .await?;
+            .instrument(Span::current()),
+        )?;
     }
     if provider.scrape_cards {
         debug!("Scraping cards");
-        handle
-            .enqueue(
-                tl_scraper::sync_cards(
-                    tl.clone(),
-                    target_dir.clone(),
-                    from_date..=to_date,
-                    handle.clone(),
-                )
-                .instrument(Span::current()),
+        handle.spawn(
+            tl_scraper::sync_cards(
+                tl.clone(),
+                target_dir.clone(),
+                from_date..=to_date,
+                handle.clone(),
             )
-            .await?;
+            .instrument(Span::current()),
+        )?;
     }
     drop(handle);
     debug!("Scheduled sync tasks");
