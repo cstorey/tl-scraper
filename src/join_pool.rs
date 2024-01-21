@@ -20,6 +20,7 @@ pub struct JobPool {
     rx: mpsc::UnboundedReceiver<Job>,
     stats: Arc<Mutex<PoolStats>>,
     has_terminated: bool,
+    concurrency: usize,
 }
 
 struct Job(BoxFuture<'static, Result<()>>);
@@ -31,13 +32,14 @@ pub struct JobHandle {
 }
 
 impl JobPool {
-    pub fn new(limit: usize) -> (Self, JobHandle) {
-        let semaphore = Arc::new(Semaphore::new(limit));
+    pub fn new(concurrency: usize) -> (Self, JobHandle) {
+        let semaphore = Arc::new(Semaphore::new(concurrency));
         let (tx, rx) = mpsc::unbounded_channel();
         let stats = Arc::<Mutex<PoolStats>>::default();
         let pool = JobPool {
             rx,
             semaphore,
+            concurrency,
             stats: stats.clone(),
             has_terminated: false,
         };
@@ -52,7 +54,7 @@ impl JobPool {
             let available_permits = self.semaphore.available_permits();
             let stats = self.stats.lock().expect("lock").clone();
             trace!(
-                incoming=?!self.has_incoming(),
+                incoming=?!self.has_terminated(),
                 tasks=?tasks.len(),
                 available_permits,
                 ?stats.jobs_submitted,
@@ -65,7 +67,7 @@ impl JobPool {
             }
 
             tokio::select! {
-                item = self.next_job(), if !self.has_incoming() => {
+                item = self.next_job(), if tasks.len() < self.concurrency && !self.has_terminated() => {
                     if let Some((Job(fut), permit)) = item? {
                         trace!("Spawning job");
                         self.stats.lock().expect("lock").jobs_started += 1;
