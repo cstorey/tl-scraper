@@ -10,6 +10,7 @@ use reqwest::Client;
 use secrecy::{Secret, SecretString};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
+use tokio::task::spawn_blocking;
 use tracing::{debug, info};
 
 use crate::Environment;
@@ -65,7 +66,7 @@ pub(crate) struct Authenticator {
     credentials: ClientCreds,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthData {
     #[serde(serialize_with = "serialize_secret")]
     access_token: SecretString,
@@ -76,9 +77,9 @@ pub struct AuthData {
     #[serde(serialize_with = "serialize_secret")]
     refresh_token: SecretString,
     scope: Option<String>,
-    // TODO: Remove default once all state migrated
-    #[serde(default = "AuthData::default_redirect_uri")]
     redirect_uri: String,
+    #[serde(default)]
+    authed_at: Option<DateTime<Utc>>,
 }
 
 impl Authenticator {
@@ -109,7 +110,10 @@ impl Authenticator {
         let token_response = self.fetch_access_token(&access_code, redirect_uri).await?;
 
         info!(?token_response, "Response");
-        let state = AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
+        let mut state =
+            AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
+
+        state.authed_at = Some(fetched_at);
 
         self.write_auth_data(&state).await?;
 
@@ -117,13 +121,15 @@ impl Authenticator {
     }
 
     pub(crate) async fn access_token(&self) -> Result<SecretString> {
-        let mut data: AuthData = match File::open(&self.token_path) {
-            Ok(f) => serde_json::from_reader(f)?,
+        let token_path = self.token_path.to_owned();
+        let mut data: AuthData = spawn_blocking(move || match File::open(&token_path) {
+            Ok(f) => Ok(serde_json::from_reader(f)?),
             Err(e) if e.kind() == ErrorKind::NotFound => {
-                bail!("No cached authentication token: {:?}", self.token_path)
+                bail!("No cached authentication token: {:?}", token_path)
             }
-            Err(e) => return Err(e.into()),
-        };
+            Err(e) => Err(e.into()),
+        })
+        .await??;
 
         // TODO: Check expiry
         let at = Utc::now();
@@ -192,12 +198,17 @@ impl Authenticator {
     }
 
     async fn write_auth_data(&self, state: &AuthData) -> Result<()> {
-        let mut tmpf = NamedTempFile::new_in(".")?;
-        serde_json::to_writer_pretty(&mut tmpf, &state)?;
-        tmpf.as_file_mut().flush()?;
-        tmpf.persist(&self.token_path)?;
-        debug!(token_path=?self.token_path, "Stored auth data");
-        Ok(())
+        let state = state.clone();
+        let token_path = self.token_path.to_owned();
+        spawn_blocking(move || {
+            let mut tmpf = NamedTempFile::new_in(".")?;
+            serde_json::to_writer_pretty(&mut tmpf, &state)?;
+            tmpf.as_file_mut().flush()?;
+            tmpf.persist(&token_path)?;
+            debug!(?token_path, "Stored auth data");
+            Ok(())
+        })
+        .await?
     }
 }
 
@@ -222,6 +233,7 @@ impl AuthData {
             expires_at: Some(fetched_at + Duration::seconds(expires_in)),
             refresh_token,
             redirect_uri,
+            authed_at: None,
         }
     }
 
@@ -231,10 +243,5 @@ impl AuthData {
         } else {
             true
         }
-    }
-
-    fn default_redirect_uri() -> String {
-        const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
-        REDIRECT_URI.to_owned()
     }
 }
