@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use secrecy::SecretString;
 use serde::Deserialize;
-use tl_scraper::{Environment, JobPool, ScraperConfig, TlClient};
+use tl_scraper::{JobPool, ScraperConfig, TlClient};
 use tracing::{debug, instrument, Instrument, Span};
 
 #[derive(Debug, Parser)]
@@ -14,8 +14,6 @@ struct Options {
     config: PathBuf,
     #[clap(short = 'u', long = "user-token")]
     user_token: PathBuf,
-    #[clap(short = 'l', long = "live")]
-    live: bool,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -92,7 +90,7 @@ async fn run() -> Result<()> {
 
     let tl = Arc::new(TlClient::new(
         client,
-        opts.truelayer_env(),
+        config.main.environment,
         &opts.user_token,
         client_creds.id,
         client_creds.secret,
@@ -156,14 +154,4 @@ async fn sync(
     debug!("Waiting for finish");
     pool.run().await?;
     Ok(())
-}
-
-impl Options {
-    pub(crate) fn truelayer_env(&self) -> Environment {
-        if self.live {
-            Environment::Live
-        } else {
-            Environment::Sandbox
-        }
-    }
 }
