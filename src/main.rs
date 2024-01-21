@@ -4,10 +4,13 @@ use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use futures::TryFutureExt;
+use reqwest::Client;
 use tokio::try_join;
 use tracing::{debug, instrument, Instrument, Span};
 
-use tl_scraper::{JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient};
+use tl_scraper::{
+    ClientCreds, Environment, JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient,
+};
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -78,16 +81,18 @@ async fn run() -> Result<()> {
         }
         Commands::Sync(sync_opts) => {
             let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));
-            let tl = Arc::new(TlClient::new(
-                client,
-                config.main.environment,
-                &provider.user_token,
-                client_creds,
-            ));
 
             try_join!(
                 pool.run().map_err(|e| e.context("Job pool")),
-                sync(tl, sync_opts, provider, handle).map_err(|e| e.context("Sync scheduler")),
+                sync(
+                    client,
+                    config.main.environment,
+                    sync_opts,
+                    provider,
+                    client_creds,
+                    handle,
+                )
+                .map_err(|e| e.context("Sync scheduler")),
             )?;
         }
     };
@@ -96,14 +101,23 @@ async fn run() -> Result<()> {
 
 #[instrument(skip_all)]
 async fn sync(
-    tl: Arc<TlClient>,
+    client: Client,
+    environment: Environment,
     Sync {
         from_date, to_date, ..
     }: Sync,
     provider: &ProviderConfig,
+    client_creds: ClientCreds,
     handle: JobHandle,
 ) -> Result<(), anyhow::Error> {
     let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
+    let tl = Arc::new(TlClient::new(
+        client,
+        environment,
+        &provider.user_token,
+        client_creds,
+    ));
+
     if provider.scrape_info {
         debug!("Scraping info");
         handle.spawn(
