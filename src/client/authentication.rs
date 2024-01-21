@@ -76,8 +76,6 @@ pub struct AuthData {
     #[serde(serialize_with = "serialize_secret")]
     refresh_token: SecretString,
     scope: Option<String>,
-    // TODO: Remove default once all state migrated
-    #[serde(default = "AuthData::default_redirect_uri")]
     redirect_uri: String,
 }
 
@@ -231,10 +229,5 @@ impl AuthData {
         } else {
             true
         }
-    }
-
-    fn default_redirect_uri() -> String {
-        const REDIRECT_URI: &str = "https://console.truelayer.com/redirect-page";
-        REDIRECT_URI.to_owned()
     }
 }
