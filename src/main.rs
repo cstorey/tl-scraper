@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
@@ -7,7 +7,7 @@ use futures::TryFutureExt;
 use tokio::try_join;
 use tracing::{debug, instrument, Instrument, Span};
 
-use tl_scraper::{ClientCreds, JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient};
+use tl_scraper::{JobHandle, JobPool, ProviderConfig, ScraperConfig, TlClient};
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -59,20 +59,7 @@ async fn run() -> Result<()> {
         toml::from_str(&content).context("Parse toml")?
     };
 
-    let client_creds: ClientCreds = {
-        let rdr = File::open(&config.main.client_credentials).with_context(|| {
-            format!(
-                "Opening client credentials: {:?}",
-                config.main.client_credentials
-            )
-        })?;
-        serde_json::from_reader(rdr).with_context(|| {
-            format!(
-                "Decoding client credentials: {:?}",
-                config.main.client_credentials
-            )
-        })?
-    };
+    let client_creds = config.credentials()?;
 
     let provider = config.providers.get(&opts.provider).ok_or_else(|| {
         anyhow!(
