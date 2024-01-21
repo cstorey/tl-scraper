@@ -156,7 +156,7 @@ pub struct DirectDebitResult {
     inner: serde_json::Value,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone, Serialize, Deserialize)]
 pub enum Environment {
     #[serde(rename = "sandbox")]
     Sandbox,
@@ -183,12 +183,12 @@ impl TlClient {
         credentials: ClientCreds,
     ) -> Self {
         let token_path = token_path.to_owned();
-        let auth = Authenticator::new(client.clone(), env.clone(), token_path, credentials);
+        let auth = Authenticator::new(client.clone(), env, token_path, credentials);
         Self { client, env, auth }
     }
 
     pub fn env(&self) -> Environment {
-        self.env.clone()
+        self.env
     }
     pub fn client_id(&self) -> &str {
         self.auth.client_id()
