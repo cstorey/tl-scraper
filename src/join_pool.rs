@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use futures::{future::BoxFuture, Future, FutureExt, TryFutureExt};
+use futures::{future::BoxFuture, Future, FutureExt};
 use tokio::{sync::mpsc, task::JoinSet};
 use tracing::{instrument, trace};
 
@@ -13,7 +13,7 @@ struct PoolStats {
 }
 
 pub struct JobPool {
-    rx: mpsc::Receiver<Job>,
+    rx: mpsc::UnboundedReceiver<Job>,
     stats: Arc<Mutex<PoolStats>>,
     has_terminated: bool,
     concurrency: usize,
@@ -23,13 +23,13 @@ struct Job(BoxFuture<'static, Result<()>>);
 
 #[derive(Clone)]
 pub struct JobHandle {
-    tx: mpsc::Sender<Job>,
+    tx: mpsc::UnboundedSender<Job>,
     stats: Arc<Mutex<PoolStats>>,
 }
 
 impl JobPool {
     pub fn new(concurrency: usize) -> (Self, JobHandle) {
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::unbounded_channel();
         let stats = Arc::<Mutex<PoolStats>>::default();
         let pool = JobPool {
             rx,
@@ -96,14 +96,10 @@ impl JobPool {
 }
 
 impl JobHandle {
-    pub async fn enqueue(
-        &self,
-        fut: impl Future<Output = Result<()>> + Send + 'static,
-    ) -> Result<()> {
+    pub fn spawn(&self, fut: impl Future<Output = Result<()>> + Send + 'static) -> Result<()> {
         self.tx
             .send(Job(fut.boxed()))
-            .map_err(|_| anyhow::anyhow!("Pool dropped?"))
-            .await?;
+            .map_err(|_| anyhow::anyhow!("Pool dropped?"))?;
         self.stats.lock().expect("lock").jobs_submitted += 1;
 
         Ok(())
