@@ -70,9 +70,7 @@ pub(crate) struct Authenticator {
 pub struct AuthData {
     #[serde(serialize_with = "serialize_secret")]
     access_token: SecretString,
-    // TODO: Remove option
-    #[serde(default)]
-    expires_at: Option<DateTime<Utc>>,
+    expires_at: DateTime<Utc>,
     token_type: String,
     #[serde(serialize_with = "serialize_secret")]
     refresh_token: SecretString,
@@ -230,7 +228,7 @@ impl AuthData {
             access_token,
             token_type,
             scope,
-            expires_at: Some(fetched_at + Duration::seconds(expires_in)),
+            expires_at: fetched_at + Duration::seconds(expires_in),
             refresh_token,
             redirect_uri,
             authed_at: None,
@@ -238,10 +236,6 @@ impl AuthData {
     }
 
     fn is_expired(&self, at: DateTime<Utc>) -> bool {
-        if let Some(expiry) = self.expires_at {
-            expiry <= at
-        } else {
-            true
-        }
+        self.expires_at <= at
     }
 }
