@@ -1,21 +1,19 @@
 use std::{fs::File, path::PathBuf, sync::Arc};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use secrecy::SecretString;
 use serde::Deserialize;
-use tl_scraper::{Environment, JobPool, TlClient};
+use tl_scraper::{JobPool, ProviderConfig, ScraperConfig, TlClient};
 use tracing::{debug, instrument, Instrument, Span};
 
 #[derive(Debug, Parser)]
 struct Options {
-    #[clap(short = 'c', long = "client-credentials")]
-    client_credentials: PathBuf,
-    #[clap(short = 'u', long = "user-token")]
-    user_token: PathBuf,
-    #[clap(short = 'l', long = "live")]
-    live: bool,
+    #[clap(short = 'c', long = "config")]
+    config: PathBuf,
+    #[clap(short = 'p', long = "provider")]
+    provider: String,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -36,15 +34,8 @@ enum Commands {
 struct Sync {
     from_date: NaiveDate,
     to_date: NaiveDate,
-    #[clap(short = 'i', long = "info")]
-    scrape_info: bool,
-    #[clap(short = 'a', long = "accounts")]
-    scrape_accounts: bool,
-    #[clap(short = 'c', long = "cards")]
-    scrape_cards: bool,
     #[clap(short = 't', long = "concurrent-tasks")]
     concurrency: Option<usize>,
-    target_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -68,18 +59,40 @@ async fn main() -> Result<()> {
 async fn run() -> Result<()> {
     let opts = Options::parse();
 
-    let client_creds: ClientCreds =
-        serde_json::from_reader(File::open(&opts.client_credentials).with_context(|| {
-            format!("Opening client credentials: {:?}", opts.client_credentials)
-        })?)
-        .with_context(|| format!("Decoding client credentials: {:?}", opts.client_credentials))?;
+    let config: ScraperConfig = {
+        let content = std::fs::read_to_string(&opts.config).context("Reading config file")?;
+        toml::from_str(&content).context("Parse toml")?
+    };
+
+    let client_creds: ClientCreds = {
+        let rdr = File::open(&config.main.client_credentials).with_context(|| {
+            format!(
+                "Opening client credentials: {:?}",
+                config.main.client_credentials
+            )
+        })?;
+        serde_json::from_reader(rdr).with_context(|| {
+            format!(
+                "Decoding client credentials: {:?}",
+                config.main.client_credentials
+            )
+        })?
+    };
+
+    let provider = config.providers.get(&opts.provider).ok_or_else(|| {
+        anyhow!(
+            "Provider not found: {}, known: {:?}",
+            opts.provider,
+            config.providers.keys().collect::<Vec<_>>()
+        )
+    })?;
 
     let client = reqwest::Client::new();
 
     let tl = Arc::new(TlClient::new(
         client,
-        opts.truelayer_env(),
-        &opts.user_token,
+        config.main.environment,
+        &provider.user_token,
         client_creds.id,
         client_creds.secret,
     ));
@@ -87,7 +100,7 @@ async fn run() -> Result<()> {
     match opts.command {
         Commands::Auth {} => tl_scraper::authenticate(tl).await?,
         Commands::Sync(sync_opts) => {
-            sync(tl, sync_opts).await?;
+            sync(tl, sync_opts, provider).await?;
         }
     };
     Ok(())
@@ -99,22 +112,19 @@ async fn sync(
     Sync {
         from_date,
         to_date,
-        scrape_info,
-        scrape_accounts: accounts,
-        scrape_cards: cards,
-        target_dir,
         concurrency,
     }: Sync,
+    provider: &ProviderConfig,
 ) -> Result<(), anyhow::Error> {
-    let target_dir = Arc::from(target_dir.into_boxed_path());
+    let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
     let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
-    if scrape_info {
+    if provider.scrape_info {
         debug!("Scraping info");
         handle.spawn(
             tl_scraper::sync_info(tl.clone(), Arc::clone(&target_dir)).instrument(Span::current()),
         )?;
     }
-    if accounts {
+    if provider.scrape_accounts {
         debug!("Scraping accounts");
         handle.spawn(
             tl_scraper::sync_accounts(
@@ -126,7 +136,7 @@ async fn sync(
             .instrument(Span::current()),
         )?;
     }
-    if cards {
+    if provider.scrape_cards {
         debug!("Scraping cards");
         handle.spawn(
             tl_scraper::sync_cards(
@@ -142,14 +152,4 @@ async fn sync(
     debug!("Waiting for finish");
     pool.run().await?;
     Ok(())
-}
-
-impl Options {
-    pub(crate) fn truelayer_env(&self) -> Environment {
-        if self.live {
-            Environment::Live
-        } else {
-            Environment::Sandbox
-        }
-    }
 }

@@ -6,11 +6,13 @@ use tracing::{debug, error};
 
 mod auth;
 mod client;
+mod config;
 mod join_pool;
 mod sync;
 
 pub use auth::authenticate;
 pub use client::{Environment, TlClient};
+pub use config::{MainConfig, ProviderConfig, ScraperConfig};
 pub use join_pool::{JobHandle, JobPool};
 pub use sync::{sync_accounts, sync_cards, sync_info};
 

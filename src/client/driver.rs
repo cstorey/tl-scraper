@@ -156,9 +156,11 @@ pub struct DirectDebitResult {
     inner: serde_json::Value,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize)]
 pub enum Environment {
+    #[serde(rename = "sandbox")]
     Sandbox,
+    #[serde(rename = "live")]
     Live,
 }
 
