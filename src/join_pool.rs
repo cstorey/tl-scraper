@@ -1,11 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use futures::{
-    channel::mpsc, future::BoxFuture, stream::FusedStream, Future, FutureExt, StreamExt,
-};
+use futures::{future::BoxFuture, Future, FutureExt};
 use tokio::{
-    sync::{OwnedSemaphorePermit, Semaphore},
+    sync::{mpsc, OwnedSemaphorePermit, Semaphore},
     task::JoinSet,
 };
 use tracing::{instrument, trace};
@@ -21,6 +19,7 @@ pub struct JobPool {
     semaphore: Arc<Semaphore>,
     rx: mpsc::UnboundedReceiver<Job>,
     stats: Arc<Mutex<PoolStats>>,
+    has_terminated: bool,
 }
 
 struct Job(BoxFuture<'static, Result<()>>);
@@ -34,12 +33,13 @@ pub struct JobHandle {
 impl JobPool {
     pub fn new(limit: usize) -> (Self, JobHandle) {
         let semaphore = Arc::new(Semaphore::new(limit));
-        let (tx, rx) = mpsc::unbounded();
+        let (tx, rx) = mpsc::unbounded_channel();
         let stats = Arc::<Mutex<PoolStats>>::default();
         let pool = JobPool {
             rx,
             semaphore,
             stats: stats.clone(),
+            has_terminated: false,
         };
         let handle = JobHandle { tx, stats };
         (pool, handle)
@@ -52,7 +52,7 @@ impl JobPool {
             let available_permits = self.semaphore.available_permits();
             let stats = self.stats.lock().expect("lock").clone();
             trace!(
-                incoming=?!self.rx.is_terminated(),
+                incoming=?!self.has_incoming(),
                 tasks=?tasks.len(),
                 available_permits,
                 ?stats.jobs_submitted,
@@ -60,12 +60,12 @@ impl JobPool {
                 ?stats.jobs_completed,
                 "Loop"
             );
-            if self.rx.is_terminated() && tasks.is_empty() {
+            if self.has_incoming() && tasks.is_empty() {
                 break;
             }
 
             tokio::select! {
-                item = self.next_job(), if !self.rx.is_terminated() => {
+                item = self.next_job(), if !self.has_incoming() => {
                     if let Some((Job(fut), permit)) = item? {
                         trace!("Spawning job");
                         self.stats.lock().expect("lock").jobs_started += 1;
@@ -89,19 +89,24 @@ impl JobPool {
 
     async fn next_job(&mut self) -> Result<Option<(Job, OwnedSemaphorePermit)>> {
         let permit = self.semaphore.clone().acquire_owned().await?;
-        if let Some(job) = self.rx.next().await {
+        if let Some(job) = self.rx.recv().await {
             Ok(Some((job, permit)))
         } else {
+            self.has_terminated = true;
             drop(permit);
             Ok(None)
         }
+    }
+
+    fn has_incoming(&self) -> bool {
+        self.has_terminated
     }
 }
 
 impl JobHandle {
     pub fn spawn(&self, fut: impl Future<Output = Result<()>> + Send + 'static) -> Result<()> {
         self.tx
-            .unbounded_send(Job(fut.boxed()))
+            .send(Job(fut.boxed()))
             .map_err(|_| anyhow::anyhow!("Pool dropped?"))?;
         self.stats.lock().expect("lock").jobs_submitted += 1;
 
