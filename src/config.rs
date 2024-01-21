@@ -12,6 +12,7 @@ pub struct MainConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProviderConfig {
     pub user_token: PathBuf,
+    pub target_dir: PathBuf,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScraperConfig {

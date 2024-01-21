@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use secrecy::SecretString;
 use serde::Deserialize;
-use tl_scraper::{JobPool, ScraperConfig, TlClient};
+use tl_scraper::{JobPool, ProviderConfig, ScraperConfig, TlClient};
 use tracing::{debug, instrument, Instrument, Span};
 
 #[derive(Debug, Parser)]
@@ -42,7 +42,6 @@ struct Sync {
     scrape_cards: bool,
     #[clap(short = 't', long = "concurrent-tasks")]
     concurrency: Option<usize>,
-    target_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -107,7 +106,7 @@ async fn run() -> Result<()> {
     match opts.command {
         Commands::Auth {} => tl_scraper::authenticate(tl).await?,
         Commands::Sync(sync_opts) => {
-            sync(tl, sync_opts).await?;
+            sync(tl, sync_opts, provider).await?;
         }
     };
     Ok(())
@@ -122,11 +121,11 @@ async fn sync(
         scrape_info,
         scrape_accounts: accounts,
         scrape_cards: cards,
-        target_dir,
         concurrency,
     }: Sync,
+    provider: &ProviderConfig,
 ) -> Result<(), anyhow::Error> {
-    let target_dir = Arc::from(target_dir.into_boxed_path());
+    let target_dir = Arc::from(provider.target_dir.clone().into_boxed_path());
     let (pool, handle) = JobPool::new(concurrency.unwrap_or(1));
     if scrape_info {
         debug!("Scraping info");
