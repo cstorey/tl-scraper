@@ -1,6 +1,6 @@
 use std::{fs::File, path::PathBuf, sync::Arc};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 use secrecy::SecretString;
@@ -12,8 +12,8 @@ use tracing::{debug, instrument, Instrument, Span};
 struct Options {
     #[clap(short = 'c', long = "config")]
     config: PathBuf,
-    #[clap(short = 'u', long = "user-token")]
-    user_token: PathBuf,
+    #[clap(short = 'p', long = "provider")]
+    provider: String,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -86,12 +86,20 @@ async fn run() -> Result<()> {
         })?
     };
 
+    let provider = config.providers.get(&opts.provider).ok_or_else(|| {
+        anyhow!(
+            "Provider not found: {}, known: {:?}",
+            opts.provider,
+            config.providers.keys().collect::<Vec<_>>()
+        )
+    })?;
+
     let client = reqwest::Client::new();
 
     let tl = Arc::new(TlClient::new(
         client,
         config.main.environment,
-        &opts.user_token,
+        &provider.user_token,
         client_creds.id,
         client_creds.secret,
     ));

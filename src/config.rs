@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +10,11 @@ pub struct MainConfig {
     pub environment: Environment,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderConfig {
+    pub user_token: PathBuf,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScraperConfig {
     pub main: MainConfig,
+    pub providers: HashMap<String, ProviderConfig>,
 }
