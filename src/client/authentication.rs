@@ -120,7 +120,7 @@ impl Authenticator {
 
     pub(crate) async fn access_token(&self) -> Result<SecretString> {
         let token_path = self.token_path.to_owned();
-        let mut data: AuthData = spawn_blocking(move || match File::open(&token_path) {
+        let data: AuthData = spawn_blocking(move || match File::open(&token_path) {
             Ok(f) => Ok(serde_json::from_reader(f)?),
             Err(e) if e.kind() == ErrorKind::NotFound => {
                 bail!("No cached authentication token: {:?}", token_path)
@@ -130,11 +130,13 @@ impl Authenticator {
         .await??;
 
         let at = Utc::now();
-        if data.is_expired(at) {
-            debug!("Access token expired, refreshing");
-            data = self.refresh_access_token(&data, at).await?;
-            self.write_auth_data(&data).await?;
+        if !data.is_expired(at) {
+            return Ok(data.access_token);
         }
+
+        debug!("Access token expired, refreshing");
+        let data = self.refresh_access_token(&data, at).await?;
+        self.write_auth_data(&data).await?;
 
         Ok(data.access_token)
     }
