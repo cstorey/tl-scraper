@@ -29,25 +29,6 @@ struct ClientCreds {
 #[derive(Debug, Subcommand)]
 enum Commands {
     Auth {},
-    Info {},
-    Accounts {},
-    AccountBalance {
-        account_id: String,
-    },
-    AccountTx {
-        account_id: String,
-        from_date: NaiveDate,
-        to_date: NaiveDate,
-    },
-    Cards {},
-    CardBalance {
-        account_id: String,
-    },
-    CardTx {
-        account_id: String,
-        from_date: NaiveDate,
-        to_date: NaiveDate,
-    },
     Sync(Sync),
 }
 
@@ -105,55 +86,6 @@ async fn run() -> Result<()> {
 
     match opts.command {
         Commands::Auth {} => tl_scraper::authenticate(tl).await?,
-        Commands::Info {} => {
-            let info_response = tl.fetch_info().await?;
-
-            println!("{:#?}", info_response);
-        }
-        Commands::Accounts {} => {
-            let accounts_response = tl.fetch_accounts().await?;
-
-            println!("{:#?}", accounts_response);
-        }
-        Commands::AccountBalance { account_id } => {
-            let balance_response = tl.account_balance(&account_id).await?;
-
-            println!("{:#?}", balance_response);
-        }
-        Commands::AccountTx {
-            account_id,
-            from_date,
-            to_date,
-        } => {
-            let response = tl
-                .account_transactions(&account_id, from_date, to_date)
-                .await?;
-
-            println!("{:#?}", response);
-        }
-        Commands::Cards {} => {
-            let cards_response = tl.fetch_cards().await?;
-
-            println!("{:#?}", cards_response);
-        }
-        Commands::CardBalance {
-            account_id: card_id,
-        } => {
-            let balance_response = tl.card_balance(&card_id).await?;
-
-            println!("{:#?}", balance_response);
-        }
-        Commands::CardTx {
-            account_id,
-            from_date,
-            to_date,
-        } => {
-            let response = tl
-                .card_transactions(&account_id, from_date, to_date)
-                .await?;
-
-            println!("{:#?}", response);
-        }
         Commands::Sync(sync_opts) => {
             sync(tl, sync_opts).await?;
         }
