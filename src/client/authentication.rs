@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Duration, Utc};
 use reqwest::Client;
 use secrecy::{Secret, SecretString};
@@ -111,7 +111,7 @@ impl Authenticator {
 
         info!(?token_response, "Response");
         let mut state =
-            AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned());
+            AuthData::from_response(token_response, fetched_at, redirect_uri.to_owned())?;
 
         state.authed_at = Some(fetched_at);
 
@@ -196,11 +196,7 @@ impl Authenticator {
         )
         .await?;
 
-        Ok(AuthData::from_response(
-            token_response,
-            at,
-            data.redirect_uri.clone(),
-        ))
+        AuthData::from_response(token_response, at, data.redirect_uri.clone())
     }
 
     async fn read_auth_data(&self) -> Result<AuthData, anyhow::Error> {
@@ -242,7 +238,7 @@ impl AuthData {
         response: FetchAccessTokenResponse,
         fetched_at: DateTime<Utc>,
         redirect_uri: String,
-    ) -> Self {
+    ) -> Result<Self> {
         let FetchAccessTokenResponse {
             access_token,
             token_type,
@@ -251,15 +247,18 @@ impl AuthData {
             expires_in,
         } = response;
 
-        Self {
+        let auth_data = Self {
             access_token,
             token_type,
             scope,
-            expires_at: fetched_at + Duration::seconds(expires_in),
+            expires_at: fetched_at
+                + Duration::try_seconds(expires_in)
+                    .ok_or_else(|| anyhow!("Invalid expires_in provided: {}", expires_in))?,
             refresh_token,
             redirect_uri,
             authed_at: None,
-        }
+        };
+        Ok(auth_data)
     }
 
     fn is_expired(&self, at: DateTime<Utc>) -> bool {
