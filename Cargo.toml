@@ -27,4 +27,4 @@ axum = { version = "0.7.4", features = ["macros"] }
 tokio-util = "0.7.10"
 url = "2.5.0"
 askama = { version = "0.12.1" }
-toml = "0.8.10"
+toml = "0.8.11"
