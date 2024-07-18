@@ -196,7 +196,7 @@ impl Authenticator {
         )
         .await?;
 
-        AuthData::from_response(token_response, at, data.redirect_uri.clone())
+        data.update_from_response(token_response, at, data.redirect_uri.clone())
     }
 
     async fn read_auth_data(&self) -> Result<AuthData, anyhow::Error> {
@@ -257,6 +257,34 @@ impl AuthData {
             refresh_token,
             redirect_uri,
             authed_at: None,
+        };
+        Ok(auth_data)
+    }
+
+    fn update_from_response(
+        &self,
+        response: FetchAccessTokenResponse,
+        fetched_at: DateTime<Utc>,
+        redirect_uri: String,
+    ) -> Result<Self> {
+        let FetchAccessTokenResponse {
+            access_token,
+            token_type,
+            scope,
+            refresh_token,
+            expires_in,
+        } = response;
+
+        let auth_data = Self {
+            access_token,
+            token_type,
+            scope,
+            expires_at: fetched_at
+                + Duration::try_seconds(expires_in)
+                    .ok_or_else(|| anyhow!("Invalid expires_in provided: {}", expires_in))?,
+            refresh_token,
+            redirect_uri,
+            ..self.clone()
         };
         Ok(auth_data)
     }
