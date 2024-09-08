@@ -24,7 +24,7 @@ rust_decimal = "1.36.0"
 futures = "0.3.30"
 clap = { version = "4.5.16", features = ["derive"] }
 axum = { version = "0.7.5", features = ["macros"] }
-tokio-util = "0.7.11"
+tokio-util = "0.7.12"
 url = "2.5.2"
 askama = { version = "0.12.1" }
 toml = "0.8.19"
