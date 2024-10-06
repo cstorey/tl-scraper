@@ -32,9 +32,11 @@ pub async fn authenticate(
         client_creds,
     ));
 
-    let listener = TcpListener::bind((IpAddr::from([127, 0, 0, 1]), 5500))
+    let port = 5500;
+    let ip_addr = IpAddr::from([127, 0, 0, 1]);
+    let listener = TcpListener::bind((ip_addr, port))
         .await
-        .context("Bind to port")?;
+        .with_context(|| format!("Bind to address: {}:{}", ip_addr, port))?;
 
     let listen_address = listener.local_addr().context("listen address")?;
     let base_url = Uri::builder()
