@@ -32,8 +32,8 @@ fn serialize_optional_secret<T: Zeroize + Serialize, S: Serializer>(
         .serialize(serializer)
 }
 
-async fn perform_request<R: DeserializeOwned>(req: RequestBuilder) -> Result<R> {
-    let res = req.send().await?;
+async fn perform_request<R: DeserializeOwned, B: Fn() -> RequestBuilder>(build: B) -> Result<R> {
+    let res = build().send().await?;
 
     if let Err(error) = res.error_for_status_ref() {
         error!(%error, status=?res.status(), "Failed response");

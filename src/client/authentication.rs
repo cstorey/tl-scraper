@@ -165,11 +165,11 @@ impl Authenticator {
             code: Some(access_code.clone()),
             refresh_token: None,
         };
-        let token_response = perform_request(
+        let token_response = perform_request(|| {
             self.client
-                .post(&url.to_string())
-                .form(&fetch_access_token_request),
-        )
+                .post(url.to_string())
+                .form(&fetch_access_token_request)
+        })
         .await?;
         Ok(token_response)
     }
@@ -189,11 +189,11 @@ impl Authenticator {
             refresh_token: Some(data.refresh_token.clone()),
         };
 
-        let token_response = perform_request(
+        let token_response = perform_request(|| {
             self.client
-                .post(&url.to_string())
-                .form(&fetch_access_token_request),
-        )
+                .post(url.to_string())
+                .form(&fetch_access_token_request)
+        })
         .await?;
 
         data.update_from_response(token_response, at, data.redirect_uri.clone())

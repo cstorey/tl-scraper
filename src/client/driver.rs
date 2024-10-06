@@ -211,11 +211,11 @@ impl TlClient {
             .path_and_query("/data/v1/info")
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let info_response = perform_request(
+        let info_response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(info_response)
     }
@@ -227,11 +227,11 @@ impl TlClient {
             .path_and_query("/data/v1/accounts")
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let info_response = perform_request(
+        let info_response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(info_response)
     }
@@ -246,11 +246,11 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -265,11 +265,11 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -287,11 +287,11 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -309,11 +309,11 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -333,12 +333,12 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
+                .get(url.to_string())
                 .query(&[("from", &from_date), ("to", &to_date)])
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -350,11 +350,11 @@ impl TlClient {
             .path_and_query("/data/v1/cards")
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -369,11 +369,11 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -388,11 +388,11 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .get(url.to_string())
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
@@ -412,12 +412,12 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(
+        let response = perform_request(|| {
             self.client
-                .get(&url.to_string())
+                .get(url.to_string())
                 .query(&[("from", &from_date), ("to", &to_date)])
-                .bearer_auth(access_token.expose_secret()),
-        )
+                .bearer_auth(access_token.expose_secret())
+        })
         .await?;
         Ok(response)
     }
