@@ -1,0 +1,10 @@
+[main]
+client_credentials = "client-creds.example.json"
+environment = "sandbox"
+
+[providers.mock]
+user_token = "token-mock.sandbox-example.json"
+target_dir = "/tmp/mockery"
+scrape_info = true
+scrape_accounts = true
+scrape_cards = true
