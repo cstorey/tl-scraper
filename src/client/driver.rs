@@ -1,5 +1,6 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
+use again::RetryPolicy;
 use anyhow::Result;
 use chrono::{DateTime, NaiveDate, Utc};
 use hyper::{http::uri, Uri};
@@ -168,6 +169,7 @@ pub struct TlClient {
     client: Client,
     env: Environment,
     auth: Authenticator,
+    retry_policy: RetryPolicy,
 }
 
 const SANDBOX_API_HOST: &str = "api.truelayer-sandbox.com";
@@ -184,7 +186,13 @@ impl TlClient {
     ) -> Self {
         let token_path = token_path.to_owned();
         let auth = Authenticator::new(client.clone(), env, token_path, credentials);
-        Self { client, env, auth }
+        let retry_policy = RetryPolicy::exponential(Duration::from_secs(1)).with_jitter(true);
+        Self {
+            client,
+            env,
+            auth,
+            retry_policy,
+        }
     }
 
     pub fn env(&self) -> Environment {
@@ -211,7 +219,7 @@ impl TlClient {
             .path_and_query("/data/v1/info")
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let info_response = perform_request(|| {
+        let info_response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -227,7 +235,7 @@ impl TlClient {
             .path_and_query("/data/v1/accounts")
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let info_response = perform_request(|| {
+        let info_response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -246,7 +254,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -265,7 +273,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -287,7 +295,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -309,7 +317,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -333,7 +341,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .query(&[("from", &from_date), ("to", &to_date)])
@@ -350,7 +358,7 @@ impl TlClient {
             .path_and_query("/data/v1/cards")
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -369,7 +377,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -388,7 +396,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .bearer_auth(access_token.expose_secret())
@@ -412,7 +420,7 @@ impl TlClient {
             ))
             .build()?;
         let access_token = self.auth.access_token().await?;
-        let response = perform_request(|| {
+        let response = perform_request(&self.retry_policy, || {
             self.client
                 .get(url.to_string())
                 .query(&[("from", &from_date), ("to", &to_date)])

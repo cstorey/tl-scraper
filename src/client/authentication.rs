@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
 };
 
+use again::RetryPolicy;
 use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Duration, Utc};
 use reqwest::Client;
@@ -65,6 +66,7 @@ pub(crate) struct Authenticator {
     token_path: PathBuf,
     credentials: ClientCreds,
     cached_auth_data: Mutex<Option<AuthData>>,
+    retry_policy: RetryPolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,12 +90,16 @@ impl Authenticator {
         token_path: PathBuf,
         credentials: &ClientCreds,
     ) -> Authenticator {
+        let retry_policy =
+            RetryPolicy::exponential(std::time::Duration::from_secs(1)).with_jitter(true);
+
         Self {
             client,
             env,
             token_path,
             credentials: credentials.clone(),
             cached_auth_data: Mutex::new(None),
+            retry_policy,
         }
     }
 
@@ -165,7 +171,7 @@ impl Authenticator {
             code: Some(access_code.clone()),
             refresh_token: None,
         };
-        let token_response = perform_request(|| {
+        let token_response = perform_request(&self.retry_policy, || {
             self.client
                 .post(url.to_string())
                 .form(&fetch_access_token_request)
@@ -189,7 +195,7 @@ impl Authenticator {
             refresh_token: Some(data.refresh_token.clone()),
         };
 
-        let token_response = perform_request(|| {
+        let token_response = perform_request(&self.retry_policy, || {
             self.client
                 .post(url.to_string())
                 .form(&fetch_access_token_request)

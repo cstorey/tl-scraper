@@ -1,3 +1,4 @@
+use again::RetryPolicy;
 use anyhow::Result;
 use reqwest::RequestBuilder;
 use secrecy::{ExposeSecret, Secret, Zeroize};
@@ -32,17 +33,23 @@ fn serialize_optional_secret<T: Zeroize + Serialize, S: Serializer>(
         .serialize(serializer)
 }
 
-async fn perform_request<R: DeserializeOwned, B: Fn() -> RequestBuilder>(build: B) -> Result<R> {
-    let res = build().send().await?;
-
-    if let Err(error) = res.error_for_status_ref() {
-        error!(%error, status=?res.status(), "Failed response");
-        if let Ok(body) = res.text().await {
-            debug!(%error, ?body, "Response body");
+async fn perform_request<R: DeserializeOwned, B: Fn() -> RequestBuilder>(
+    retry_policy: &RetryPolicy,
+    build: B,
+) -> Result<R> {
+    async fn inner<R: DeserializeOwned, B: Fn() -> RequestBuilder>(build: B) -> Result<R> {
+        let res = build().send().await?;
+        if let Err(error) = res.error_for_status_ref() {
+            error!(%error, status=?res.status(), "Failed response");
+            if let Ok(body) = res.text().await {
+                debug!(%error, ?body, "Response body");
+            }
+            Err(error.into())
+        } else {
+            let result = res.json().await?;
+            Ok(result)
         }
-        Err(error.into())
-    } else {
-        let result = res.json().await?;
-        Ok(result)
     }
+
+    retry_policy.retry(|| inner(&build)).await
 }
