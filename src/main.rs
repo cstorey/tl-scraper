@@ -25,6 +25,8 @@ enum Commands {
     Auth {
         #[clap(short = 'p', long = "provider")]
         provider: String,
+        #[clap(short = 'l', long = "listen-port")]
+        port: Option<u16>,
     },
     Sync(Sync),
 }
@@ -70,10 +72,16 @@ async fn run() -> Result<()> {
     let client = reqwest::Client::new();
 
     match opts.command {
-        Commands::Auth { provider } => {
+        Commands::Auth { provider, port } => {
             let provider: &ProviderConfig = config.provider(&provider)?;
-            tl_scraper::authenticate(&client, config.main.environment, provider, &client_creds)
-                .await?;
+            tl_scraper::authenticate(
+                &client,
+                config.main.environment,
+                provider,
+                &client_creds,
+                port.unwrap_or(5500),
+            )
+            .await?;
         }
         Commands::Sync(ref sync_opts) => {
             let (pool, handle) = JobPool::new(sync_opts.concurrency.unwrap_or(1));

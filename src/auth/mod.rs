@@ -23,6 +23,7 @@ pub async fn authenticate(
     environment: Environment,
     provider: &ProviderConfig,
     client_creds: &ClientCreds,
+    listen_port: u16,
 ) -> Result<()> {
     let cnx = CancellationToken::new();
     let tl = Arc::new(TlClient::new(
@@ -32,11 +33,10 @@ pub async fn authenticate(
         client_creds,
     ));
 
-    let port = 5500;
     let ip_addr = IpAddr::from([127, 0, 0, 1]);
-    let listener = TcpListener::bind((ip_addr, port))
+    let listener = TcpListener::bind((ip_addr, listen_port))
         .await
-        .with_context(|| format!("Bind to address: {}:{}", ip_addr, port))?;
+        .with_context(|| format!("Bind to address: {}:{}", ip_addr, listen_port))?;
 
     let listen_address = listener.local_addr().context("listen address")?;
     let base_url = Uri::builder()
