@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
@@ -69,7 +69,16 @@ async fn run() -> Result<()> {
 
     let client_creds = config.credentials()?;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(
+            config
+                .main
+                .request_timeout_s
+                .map(Duration::from_secs)
+                .unwrap_or(Duration::from_secs(60)),
+        )
+        .build()
+        .context("building reqwest client")?;
 
     match opts.command {
         Commands::Auth { provider, port } => {

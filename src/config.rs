@@ -9,6 +9,7 @@ use crate::{ClientCreds, Environment};
 pub struct MainConfig {
     pub client_credentials: PathBuf,
     pub environment: Environment,
+    pub request_timeout_s: Option<u64>,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProviderConfig {
