@@ -89,6 +89,7 @@ impl ListCmd {
         Ok(())
     }
 
+    #[instrument(skip_all,fields(%account_id))]
     async fn list_account(&self, client: &BankDataClient, account_id: Uuid) -> Result<()> {
         let details = client
             .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
