@@ -1,4 +1,5 @@
 mod auth;
+mod connect;
 mod institutions;
 
 use clap::Parser;
@@ -8,6 +9,7 @@ use color_eyre::Result;
 pub enum Command {
     Auth(auth::Cmd),
     Institutions(institutions::Cmd),
+    Connect(connect::Cmd),
 }
 
 impl Command {
@@ -15,6 +17,7 @@ impl Command {
         match self {
             Command::Auth(cmd) => cmd.run().await?,
             Command::Institutions(cmd) => cmd.run().await?,
+            Command::Connect(cmd) => cmd.run().await?,
         }
 
         Ok(())
