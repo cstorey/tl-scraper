@@ -6,7 +6,7 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
 
-use crate::http_tools::RequestErrors;
+use crate::client::RequestErrors;
 
 #[derive(Debug, Parser)]
 pub struct Cmd {

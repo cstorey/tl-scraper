@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, field, info, instrument, warn, Span};
 use uuid::Uuid;
 
-use crate::{auth::load_token, http_tools::RequestErrors};
+use crate::{auth::load_token, client::RequestErrors};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {

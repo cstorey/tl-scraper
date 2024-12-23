@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     auth::{load_token, Token},
+    client::RequestErrors,
     connect::Requisition,
-    http_tools::RequestErrors,
 };
 
 #[derive(Debug, Parser)]

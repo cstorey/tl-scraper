@@ -1,7 +1,7 @@
 mod accounts;
 mod auth;
+mod client;
 mod connect;
-mod http_tools;
 mod institutions;
 
 use clap::Parser;

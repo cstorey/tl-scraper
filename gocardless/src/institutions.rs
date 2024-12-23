@@ -5,7 +5,7 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use crate::{auth::load_token, http_tools::RequestErrors};
+use crate::{auth::load_token, client::RequestErrors};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
