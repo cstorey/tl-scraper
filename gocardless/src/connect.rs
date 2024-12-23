@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, field, info, instrument, warn, Span};
 use uuid::Uuid;
 
-use crate::{auth::load_token, client::RequestErrors};
+use crate::{auth::load_token, client::BankDataClient};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
@@ -76,7 +76,7 @@ impl Cmd {
     pub(crate) async fn run(&self) -> Result<()> {
         let token = load_token(&self.token).await?;
 
-        let client = reqwest::Client::new();
+        let client = BankDataClient::new(token);
 
         let cnx = CancellationToken::new();
         let ip_addr = IpAddr::from([127, 0, 0, 1]);
@@ -98,19 +98,12 @@ impl Cmd {
         };
 
         let requisition = client
-            .post("https://bankaccountdata.gocardless.com/api/v2/requisitions/")
-            .bearer_auth(&token.access)
-            .json(&req)
-            .send()
-            .await?
-            .parse_error()
-            .await?
-            .json::<Requisition>()
+            .post::<Requisition>("/api/v2/requisitions/", &req)
             .await?;
 
         Span::current().record("requisition_id", field::display(&requisition.id));
 
-        debug!(?requisition, "Got requisition",);
+        debug!(?requisition, "Got requisition");
 
         let app = Router::new().merge(routes(cnx.clone(), requisition.id));
 
@@ -123,16 +116,7 @@ impl Cmd {
             .context("Running server")?;
 
         let requisition = client
-            .get(format!(
-                "https://bankaccountdata.gocardless.com/api/v2/requisitions/{}/",
-                requisition.id
-            ))
-            .bearer_auth(&token.access)
-            .send()
-            .await?
-            .parse_error()
-            .await?
-            .json::<Requisition>()
+            .get::<Requisition>(&format!("/api/v2/requisitions/{}/", requisition.id))
             .await?;
 
         debug!(?requisition, "Got requisition",);

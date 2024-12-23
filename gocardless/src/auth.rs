@@ -6,7 +6,7 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
 
-use crate::client::RequestErrors;
+use crate::client::BankDataClient;
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
@@ -45,19 +45,13 @@ impl Cmd {
 
         info!("Authing");
 
-        let client = reqwest::Client::new();
+        let client = BankDataClient::unauthenticated();
 
         let authed_at = Utc::now();
 
-        let resp = client
-            .post("https://bankaccountdata.gocardless.com/api/v2/token/new/")
-            .json(&secrets)
-            .send()
-            .await?
-            .parse_error()
+        let gc_token = client
+            .post::<GCToken>("/api/v2/token/new/", &secrets)
             .await?;
-
-        let gc_token = resp.json::<GCToken>().await?;
 
         let tok = Token::from_gc_token(authed_at, &gc_token);
 

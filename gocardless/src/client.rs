@@ -1,10 +1,27 @@
 use std::fmt;
 
-use color_eyre::{eyre::eyre, Result};
-use reqwest::header::CONTENT_TYPE;
-use serde::Deserialize;
+use axum::http::{uri::Scheme, Uri};
+use color_eyre::{
+    eyre::{eyre, Context},
+    Result,
+};
+use reqwest::{header::CONTENT_TYPE, Client};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, warn};
 
+use crate::auth::Token;
+
+const BANK_DATA_HOST: &str = "bankaccountdata.gocardless.com";
+
+#[derive(Clone)]
+pub(crate) struct UnauthenticatedBankDataClient {
+    http: Client,
+}
+#[derive(Clone)]
+pub(crate) struct BankDataClient {
+    http: Client,
+    token: Token,
+}
 #[derive(Debug, Deserialize)]
 struct ErrorResponse {
     summary: String,
@@ -14,6 +31,109 @@ struct ErrorResponse {
 
 pub(crate) trait RequestErrors: Sized {
     async fn parse_error(self) -> Result<Self>;
+}
+
+impl UnauthenticatedBankDataClient {
+    fn new() -> Self {
+        let http = Client::new();
+        UnauthenticatedBankDataClient { http }
+    }
+
+    pub(crate) async fn post<Response: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &impl Serialize,
+    ) -> Result<Response> {
+        // "https://bankaccountdata.gocardless.com/api/v2/token/new/"
+        let url = Uri::builder()
+            .scheme(Scheme::HTTPS)
+            .authority(BANK_DATA_HOST)
+            .path_and_query(path)
+            .build()
+            .wrap_err("Build base URI")?
+            .to_string();
+
+        debug!(%url, "POST");
+
+        let resp = self
+            .http
+            .post(url)
+            .json(body)
+            .send()
+            .await?
+            .parse_error()
+            .await?
+            .json()
+            .await?;
+
+        Ok(resp)
+    }
+}
+
+impl BankDataClient {
+    pub(crate) fn new(token: Token) -> Self {
+        let http = Client::new();
+        Self { http, token }
+    }
+
+    pub(crate) fn unauthenticated() -> UnauthenticatedBankDataClient {
+        UnauthenticatedBankDataClient::new()
+    }
+
+    pub(crate) async fn get<Response: DeserializeOwned>(&self, path: &str) -> Result<Response> {
+        // "https://bankaccountdata.gocardless.com/api/v2/token/new/"
+        let url = Uri::builder()
+            .scheme(Scheme::HTTPS)
+            .authority(BANK_DATA_HOST)
+            .path_and_query(path)
+            .build()
+            .wrap_err("Build base URI")?
+            .to_string();
+
+        debug!(%url, "GET");
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(&self.token.access)
+            .send()
+            .await?
+            .parse_error()
+            .await?
+            .json()
+            .await?;
+
+        Ok(resp)
+    }
+
+    pub(crate) async fn post<Response: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &impl Serialize,
+    ) -> Result<Response> {
+        // "https://bankaccountdata.gocardless.com/api/v2/token/new/"
+        let url = Uri::builder()
+            .scheme(Scheme::HTTPS)
+            .authority(BANK_DATA_HOST)
+            .path_and_query(path)
+            .build()
+            .wrap_err("Build base URI")?
+            .to_string();
+
+        debug!(%url, "POST");
+        let resp = self
+            .http
+            .post(url)
+            .json(body)
+            .bearer_auth(&self.token.access)
+            .send()
+            .await?
+            .parse_error()
+            .await?
+            .json()
+            .await?;
+
+        Ok(resp)
+    }
 }
 
 impl RequestErrors for reqwest::Response {
@@ -37,6 +157,8 @@ impl RequestErrors for reqwest::Response {
                 None => {}
             }
         }
+
+        debug!(status=?resp.status(), headers=?resp.headers());
         Ok(resp.error_for_status()?)
     }
 }

@@ -8,11 +8,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
 use uuid::Uuid;
 
-use crate::{
-    auth::{load_token, Token},
-    client::RequestErrors,
-    connect::Requisition,
-};
+use crate::{auth::load_token, client::BankDataClient, connect::Requisition};
 
 #[derive(Debug, Parser)]
 pub struct ListCmd {
@@ -75,18 +71,10 @@ impl ListCmd {
     pub(crate) async fn run(&self) -> Result<()> {
         let token = load_token(&self.token).await?;
 
-        let client = reqwest::Client::new();
+        let client = BankDataClient::new(token);
+
         let requisition = client
-            .get(format!(
-                "https://bankaccountdata.gocardless.com/api/v2/requisitions/{}/",
-                self.requisition_id
-            ))
-            .bearer_auth(&token.access)
-            .send()
-            .await?
-            .parse_error()
-            .await?
-            .json::<Requisition>()
+            .get::<Requisition>(&format!("/api/v2/requisitions/{}/", self.requisition_id))
             .await?;
 
         debug!(?requisition, "Got requisition",);
@@ -96,42 +84,19 @@ impl ListCmd {
         }
 
         for acc in requisition.accounts.iter().cloned() {
-            self.list_account(&client, &token, acc).await?;
+            self.list_account(&client, acc).await?;
         }
         Ok(())
     }
 
-    async fn list_account(
-        &self,
-        client: &reqwest::Client,
-        token: &Token,
-        account_id: Uuid,
-    ) -> Result<()> {
+    async fn list_account(&self, client: &BankDataClient, account_id: Uuid) -> Result<()> {
         let details = client
-            .get(format!(
-                "https://bankaccountdata.gocardless.com/api/v2/accounts/{}/",
-                account_id,
-            ))
-            .bearer_auth(&token.access)
-            .send()
-            .await?
-            .parse_error()
-            .await?
-            .json::<Account>()
+            .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
             .await?;
 
         info!(%account_id, "Account details: {}", serde_json::to_string_pretty(&details)?);
         let details = client
-            .get(format!(
-                "https://bankaccountdata.gocardless.com/api/v2/accounts/{}/balances/",
-                account_id,
-            ))
-            .bearer_auth(&token.access)
-            .send()
-            .await?
-            .parse_error()
-            .await?
-            .json::<Balances>()
+            .get::<Balances>(&format!("/api/v2/accounts/{}/balances/", account_id,))
             .await?;
 
         info!(%account_id, "Account details: {}", serde_json::to_string_pretty(&details)?);

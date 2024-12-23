@@ -5,7 +5,7 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use crate::{auth::load_token, client::RequestErrors};
+use crate::{auth::load_token, client::BankDataClient};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
@@ -29,17 +29,11 @@ impl Cmd {
     pub(crate) async fn run(&self) -> Result<()> {
         let token = load_token(&self.token).await?;
 
-        let client = reqwest::Client::new();
+        let client = BankDataClient::new(token);
 
-        let resp = client
-            .get("https://bankaccountdata.gocardless.com/api/v2/institutions/?country=gb")
-            .bearer_auth(&token.access)
-            .send()
-            .await?
-            .parse_error()
+        let data = client
+            .get::<Vec<Institution>>("/api/v2/institutions/?country=gb")
             .await?;
-
-        let data = resp.json::<Vec<Institution>>().await?;
 
         info!("Institutions: {}", serde_json::to_string_pretty(&data)?);
 
