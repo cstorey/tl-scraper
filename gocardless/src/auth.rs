@@ -1,9 +1,18 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
+use clap::Parser;
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
+
+#[derive(Debug, Parser)]
+pub struct Cmd {
+    #[clap(short = 's', long = "secrets", help = "Secrets file")]
+    secrets: PathBuf,
+    #[clap(short = 't', long = "token", help = "Token file")]
+    token: PathBuf,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Secrets {
@@ -26,6 +35,35 @@ pub(crate) struct Token {
     refresh: String,
     refresh_expires: DateTime<Utc>,
 }
+
+impl Cmd {
+    #[instrument("auth", skip_all)]
+    pub(crate) async fn run(&self) -> Result<()> {
+        let secrets = load_secrets(&self.secrets).await?;
+
+        info!("Authing");
+
+        let client = reqwest::Client::new();
+
+        let authed_at = Utc::now();
+
+        let resp = client
+            .post("https://bankaccountdata.gocardless.com/api/v2/token/new/")
+            .json(&secrets)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let gc_token = resp.json::<GCToken>().await?;
+
+        let tok = Token::from_gc_token(authed_at, &gc_token);
+
+        store_token(&self.token, &tok).await?;
+
+        Ok(())
+    }
+}
+
 impl Token {
     pub(crate) fn from_gc_token(authed_at: DateTime<Utc>, gctoken: &GCToken) -> Token {
         Token {
