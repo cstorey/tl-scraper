@@ -6,6 +6,8 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
 
+use crate::http_tools::RequestErrors;
+
 #[derive(Debug, Parser)]
 pub struct Cmd {
     #[clap(short = 's', long = "secrets", help = "Secrets file")]
@@ -52,7 +54,8 @@ impl Cmd {
             .json(&secrets)
             .send()
             .await?
-            .error_for_status()?;
+            .parse_error()
+            .await?;
 
         let gc_token = resp.json::<GCToken>().await?;
 

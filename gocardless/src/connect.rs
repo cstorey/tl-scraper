@@ -1,25 +1,22 @@
-use std::{fmt, net::IpAddr, path::PathBuf};
+use std::{net::IpAddr, path::PathBuf};
 
 use axum::{
     debug_handler,
     extract::{Query, State},
-    http::{header::CONTENT_TYPE, uri::Scheme, StatusCode, Uri},
+    http::{uri::Scheme, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use clap::Parser;
-use color_eyre::{
-    eyre::{eyre, Context},
-    Report, Result,
-};
+use color_eyre::{eyre::Context, Report, Result};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, field, info, instrument, warn, Span};
 use uuid::Uuid;
 
-use crate::auth::load_token;
+use crate::{auth::load_token, http_tools::RequestErrors};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
@@ -37,16 +34,17 @@ struct RequisitionReq {
     redirect: String,
 }
 #[derive(Debug, Serialize, Deserialize)]
-struct Requisition {
-    id: Uuid,
-    link: String,
-    status: RequisitionStatus,
+pub(crate) struct Requisition {
+    pub(crate) id: Uuid,
+    pub(crate) link: String,
+    pub(crate) status: RequisitionStatus,
+    pub(crate) accounts: Vec<Uuid>,
     #[serde(flatten)]
-    other: serde_json::Value,
+    pub(crate) other: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-enum RequisitionStatus {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) enum RequisitionStatus {
     // Requisition has been successfully created
     #[serde(rename = "CR")]
     Created,
@@ -124,24 +122,28 @@ impl Cmd {
             .await
             .context("Running server")?;
 
-        let url = format!(
-            "https://bankaccountdata.gocardless.com/api/v2/requisitions/{}/",
-            requisition.id
-        );
-        debug!(?url, "Requisition URL");
         let requisition = client
-            .get(url)
+            .get(format!(
+                "https://bankaccountdata.gocardless.com/api/v2/requisitions/{}/",
+                requisition.id
+            ))
             .bearer_auth(&token.access)
             .send()
             .await?
             .parse_error()
             .await?
-            .json::<serde_json::Value>()
+            .json::<Requisition>()
             .await?;
 
         debug!(?requisition, "Got requisition",);
 
         Ok(())
+    }
+}
+
+impl Requisition {
+    pub(crate) fn is_linked(&self) -> bool {
+        self.status == RequisitionStatus::Linked
     }
 }
 
@@ -194,61 +196,5 @@ impl IntoResponse for WebError {
     fn into_response(self) -> Response {
         error!(error=?self.0, "Error handling request");
         (StatusCode::INTERNAL_SERVER_ERROR, "Error handling response").into_response()
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ErrorResponse {
-    summary: String,
-    detail: String,
-    status_code: u16,
-}
-
-trait RequestErrors: Sized {
-    async fn parse_error(self) -> Result<Self>;
-}
-
-impl RequestErrors for reqwest::Response {
-    async fn parse_error(self) -> Result<Self> {
-        let resp = self;
-        if resp.status().is_client_error() {
-            match resp.headers().get(CONTENT_TYPE) {
-                Some(content_type) if content_type.as_bytes() == b"application/json" => {
-                    let err = resp.json::<ErrorResponse>().await?;
-                    return Err(err.into());
-                }
-                Some(content_type) => {
-                    warn!(?content_type, "unknown content type");
-                    let status = resp.status();
-                    let content = resp.text().await?;
-                    debug!(?content, "Response body");
-                    return Err(eyre!(
-                        "Unrecognised response; code: {status}; content: {content:?}"
-                    ));
-                }
-                None => {}
-            }
-        }
-        Ok(resp.error_for_status()?)
-    }
-}
-
-impl std::error::Error for ErrorResponse {
-    fn description(&self) -> &str {
-        &self.detail
-    }
-}
-
-impl fmt::Display for ErrorResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ErrorResponse {
-            summary,
-            detail,
-            status_code,
-        } = self;
-        write!(
-            f,
-            "Summary: {summary:?}; details: {detail:?}, status_code: {status_code:?}",
-        )
     }
 }

@@ -5,7 +5,7 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use crate::auth::load_token;
+use crate::{auth::load_token, http_tools::RequestErrors};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
@@ -36,7 +36,8 @@ impl Cmd {
             .bearer_auth(&token.access)
             .send()
             .await?
-            .error_for_status()?;
+            .parse_error()
+            .await?;
 
         let data = resp.json::<Vec<Institution>>().await?;
 
