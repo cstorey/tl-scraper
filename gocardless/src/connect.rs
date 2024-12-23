@@ -1,15 +1,18 @@
-use std::{net::IpAddr, path::PathBuf};
+use std::{fmt, net::IpAddr, path::PathBuf};
 
 use axum::{
     debug_handler,
     extract::{Query, State},
-    http::{uri::Scheme, StatusCode, Uri},
+    http::{header::CONTENT_TYPE, uri::Scheme, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use clap::Parser;
-use color_eyre::{eyre::Context, Result};
+use color_eyre::{
+    eyre::{eyre, Context},
+    Report, Result,
+};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -34,11 +37,40 @@ struct RequisitionReq {
     redirect: String,
 }
 #[derive(Debug, Serialize, Deserialize)]
-struct RequisitionResp {
+struct Requisition {
     id: Uuid,
     link: String,
+    status: RequisitionStatus,
     #[serde(flatten)]
     other: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum RequisitionStatus {
+    // Requisition has been successfully created
+    #[serde(rename = "CR")]
+    Created,
+    // End-user is giving consent at GoCardless's consent screen
+    #[serde(rename = "GC")]
+    GivingConsent,
+    // End-user is redirected to the financial institution for authentication
+    #[serde(rename = "UA")]
+    UndergoingAuthentication,
+    // Either SSN verification has failed or end-user has entered incorrect credentials
+    #[serde(rename = "RJ")]
+    Rejected,
+    // End-user is selecting accounts
+    #[serde(rename = "SA")]
+    SelectingAccounts,
+    // End-user is granting access to their account information
+    #[serde(rename = "GA")]
+    GrantingAccess,
+    // Account has been successfully linked to requisition
+    #[serde(rename = "LN")]
+    Linked,
+    // Access to accounts has expired as set in End User Agreement
+    #[serde(rename = "EX")]
+    Expired,
 }
 
 impl Cmd {
@@ -73,16 +105,14 @@ impl Cmd {
             .json(&req)
             .send()
             .await?
-            .error_for_status()?
-            .json::<RequisitionResp>()
+            .parse_error()
+            .await?
+            .json::<Requisition>()
             .await?;
 
         Span::current().record("requisition_id", field::display(&requisition.id));
 
-        debug!(
-            "Got requisition: {}",
-            serde_json::to_string_pretty(&requisition)?
-        );
+        debug!(?requisition, "Got requisition",);
 
         let app = Router::new().merge(routes(cnx.clone(), requisition.id));
 
@@ -93,6 +123,23 @@ impl Cmd {
             .with_graceful_shutdown(cnx.clone().cancelled_owned())
             .await
             .context("Running server")?;
+
+        let url = format!(
+            "https://bankaccountdata.gocardless.com/api/v2/requisitions/{}/",
+            requisition.id
+        );
+        debug!(?url, "Requisition URL");
+        let requisition = client
+            .get(url)
+            .bearer_auth(&token.access)
+            .send()
+            .await?
+            .parse_error()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        debug!(?requisition, "Got requisition",);
 
         Ok(())
     }
@@ -110,7 +157,7 @@ struct RequisitionCallbackQuery {
     id: Uuid,
 }
 
-struct WebError(color_eyre::Report);
+struct WebError(Report);
 
 type WebResult<T> = std::result::Result<T, WebError>;
 
@@ -147,5 +194,61 @@ impl IntoResponse for WebError {
     fn into_response(self) -> Response {
         error!(error=?self.0, "Error handling request");
         (StatusCode::INTERNAL_SERVER_ERROR, "Error handling response").into_response()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorResponse {
+    summary: String,
+    detail: String,
+    status_code: u16,
+}
+
+trait RequestErrors: Sized {
+    async fn parse_error(self) -> Result<Self>;
+}
+
+impl RequestErrors for reqwest::Response {
+    async fn parse_error(self) -> Result<Self> {
+        let resp = self;
+        if resp.status().is_client_error() {
+            match resp.headers().get(CONTENT_TYPE) {
+                Some(content_type) if content_type.as_bytes() == b"application/json" => {
+                    let err = resp.json::<ErrorResponse>().await?;
+                    return Err(err.into());
+                }
+                Some(content_type) => {
+                    warn!(?content_type, "unknown content type");
+                    let status = resp.status();
+                    let content = resp.text().await?;
+                    debug!(?content, "Response body");
+                    return Err(eyre!(
+                        "Unrecognised response; code: {status}; content: {content:?}"
+                    ));
+                }
+                None => {}
+            }
+        }
+        Ok(resp.error_for_status()?)
+    }
+}
+
+impl std::error::Error for ErrorResponse {
+    fn description(&self) -> &str {
+        &self.detail
+    }
+}
+
+impl fmt::Display for ErrorResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ErrorResponse {
+            summary,
+            detail,
+            status_code,
+        } = self;
+        write!(
+            f,
+            "Summary: {summary:?}; details: {detail:?}, status_code: {status_code:?}",
+        )
     }
 }
