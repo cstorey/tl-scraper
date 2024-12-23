@@ -21,7 +21,7 @@ pub(crate) struct GCToken {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Token {
-    access: String,
+    pub(crate) access: String,
     access_expires: DateTime<Utc>,
     refresh: String,
     refresh_expires: DateTime<Utc>,
@@ -43,6 +43,16 @@ pub(crate) async fn store_token(path: &Path, tok: &Token) -> Result<()> {
     tokio::fs::write(&path, buf).await?;
     debug!(?path, "Stored token");
     Ok(())
+}
+
+#[instrument(skip_all, fields(?path))]
+pub(crate) async fn load_token(path: &Path) -> Result<Token> {
+    let buf = tokio::fs::read(&path).await?;
+    let secrets = serde_json::from_slice(&buf)?;
+
+    debug!(?path, "Loaded token");
+
+    Ok(secrets)
 }
 
 #[instrument(skip_all, fields(?path))]
