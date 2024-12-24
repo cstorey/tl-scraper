@@ -1,4 +1,4 @@
-use std::{cmp, path::Path};
+use std::{collections::HashMap, path::Path};
 
 use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
@@ -91,30 +91,54 @@ impl Cmd {
         self.write_file(&account_base.join("balances.json"), &details)
             .await?;
 
-        let ranges = (0..)
-            .map(|n| start_date + Months::new(n))
-            .take_while(|d| d <= &end_date)
-            .map(|month_start| {
-                let month_end = (month_start + Months::new(1))
-                    .pred_opt()
-                    .expect("previous day");
-                (month_start, cmp::min(month_end, end_date))
-            });
+        debug!(%start_date, %end_date, "scanning dates");
+        let transactions = client
+            .get::<Transactions>(&format!(
+                "/api/v2/accounts/{}/transactions/?{}",
+                account_id,
+                serde_urlencoded::to_string(TransactionsQuery {
+                    date_from: start_date,
+                    date_to: end_date,
+                })?
+            ))
+            .await?;
 
-        for (start, end) in ranges {
-            debug!(%start, %end, "scanning month");
-            let transactions = client
-                .get::<Transactions>(&format!(
-                    "/api/v2/accounts/{}/transactions/?{}",
-                    account_id,
-                    serde_urlencoded::to_string(&TransactionsQuery {
-                        date_from: start,
-                        date_to: end,
-                    })?
-                ))
-                .await?;
+        let mut by_month = HashMap::<_, Transactions>::new();
 
-            let path = account_base.join(start.format("%Y-%m.json").to_string());
+        for booked in transactions.transactions.booked {
+            let date = booked
+                .booking_date
+                .or(booked.booking_date_time.map(|dt| dt.date_naive()))
+                .or(booked.value_date);
+            let start_of_month = date.map(|d| d.with_day(1).expect("valid date"));
+
+            by_month
+                .entry(start_of_month)
+                .or_default()
+                .transactions
+                .booked
+                .push(booked)
+        }
+        for pending in transactions.transactions.pending {
+            let date = pending
+                .booking_date
+                .or(pending.booking_date_time.map(|dt| dt.date_naive()))
+                .or(pending.value_date);
+            let start_of_month = date.map(|d| d.with_day(1).expect("valid date"));
+
+            by_month
+                .entry(start_of_month)
+                .or_default()
+                .transactions
+                .pending
+                .push(pending)
+        }
+
+        for (month, transactions) in by_month {
+            let fname = month
+                .map(|month| month.format("%Y-%m.json").to_string())
+                .unwrap_or_else(|| "undated.json".to_owned());
+            let path = account_base.join(fname);
             self.write_file(&path, &transactions).await?;
         }
 
