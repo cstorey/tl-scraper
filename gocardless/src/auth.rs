@@ -1,23 +1,26 @@
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use chrono::{DateTime, Duration, Utc};
 use clap::{Args, Parser};
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::client::BankDataClient;
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
-    #[clap(short = 's', long = "secrets", help = "Secrets file")]
-    secrets: PathBuf,
-    #[clap(short = 't', long = "token", help = "Token file")]
-    token: PathBuf,
+    #[clap(flatten)]
+    auth: AuthArgs,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct AuthArgs {
+    #[clap(short = 's', long = "secrets", help = "Secrets file")]
+    secrets: PathBuf,
     #[clap(short = 't', long = "token", help = "Token file")]
     token: PathBuf,
 }
@@ -40,7 +43,7 @@ pub(crate) struct TokenRefreshResp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct GCToken {
+pub(crate) struct TokenPair {
     access: String,
     access_expires: i64,
     refresh: String,
@@ -58,28 +61,14 @@ pub(crate) struct Token {
 impl Cmd {
     #[instrument("auth", skip_all)]
     pub(crate) async fn run(&self) -> Result<()> {
-        let secrets = load_secrets(&self.secrets).await?;
-
-        info!("Authing");
-
-        let client = BankDataClient::unauthenticated();
-
-        let authed_at = Utc::now();
-
-        let gc_token = client
-            .post::<GCToken>("/api/v2/token/new/", &secrets)
-            .await?;
-
-        let tok = Token::from_gc_token(authed_at, &gc_token);
-
-        store_token(&self.token, &tok).await?;
+        let _ = self.auth.load_token().await?;
 
         Ok(())
     }
 }
 
 impl Token {
-    pub(crate) fn from_gc_token(authed_at: DateTime<Utc>, gctoken: &GCToken) -> Token {
+    pub(crate) fn from_token_pair(authed_at: DateTime<Utc>, gctoken: &TokenPair) -> Token {
         Token {
             access: gctoken.access.clone(),
             access_expires: authed_at + Duration::seconds(gctoken.access_expires),
@@ -107,8 +96,16 @@ async fn store_token(path: &Path, tok: &Token) -> Result<()> {
 }
 
 #[instrument(skip_all, fields(?path))]
-async fn load_token(path: &Path) -> Result<Token> {
-    let buf = tokio::fs::read(path).await?;
+async fn load_token(path: &Path) -> Result<Option<Token>> {
+    let buf = match tokio::fs::read(path).await {
+        Ok(buf) => buf,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            warn!("Token file not found");
+            return Ok(None);
+        }
+        Err(err) => return Err(err.into()),
+    };
+
     let mut token = serde_json::from_slice::<Token>(&buf)?;
 
     let now = Utc::now();
@@ -122,7 +119,7 @@ async fn load_token(path: &Path) -> Result<Token> {
 
     debug!(?path, "Loaded token");
 
-    Ok(token)
+    Ok(Some(token))
 }
 
 #[instrument(skip_all)]
@@ -157,6 +154,30 @@ async fn load_secrets(path: &Path) -> Result<Secrets> {
 
 impl AuthArgs {
     pub(crate) async fn load_token(&self) -> Result<Token> {
-        load_token(&self.token).await
+        let authed_at = Utc::now();
+
+        if let Some(token) = load_token(&self.token).await? {
+            if token.refresh_expires >= authed_at {
+                return Ok(token);
+            } else {
+                debug!("Refresh token expired; refreshing");
+            }
+        }
+
+        let secrets = load_secrets(&self.secrets).await?;
+
+        info!("Authing");
+
+        let client = BankDataClient::unauthenticated();
+
+        let tokens = client
+            .post::<TokenPair>("/api/v2/token/new/", &secrets)
+            .await?;
+
+        let tok = Token::from_token_pair(authed_at, &tokens);
+
+        store_token(&self.token, &tok).await?;
+
+        Ok(tok)
     }
 }
