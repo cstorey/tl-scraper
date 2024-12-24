@@ -14,8 +14,6 @@ pub enum Command {
     Auth(auth::Cmd),
     Institutions(institutions::Cmd),
     Connect(connect::Cmd),
-    ListAccounts(accounts::ListCmd),
-    ListTransactions(transactions::Cmd),
     Sync(sync::Cmd),
 }
 
@@ -25,8 +23,6 @@ impl Command {
             Command::Auth(cmd) => cmd.run().await?,
             Command::Institutions(cmd) => cmd.run().await?,
             Command::Connect(cmd) => cmd.run().await?,
-            Command::ListAccounts(cmd) => cmd.run().await?,
-            Command::ListTransactions(cmd) => cmd.run().await?,
             Command::Sync(cmd) => cmd.run().await?,
         }
 
