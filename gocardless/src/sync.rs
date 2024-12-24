@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     accounts::{Account, Balances},
-    auth::load_token,
+    auth::AuthArgs,
     client::BankDataClient,
     connect::Requisition,
     transactions::{Transactions, TransactionsQuery},
@@ -18,8 +18,8 @@ use crate::{
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
-    #[clap(short = 't', long = "token", help = "Token file")]
-    token: PathBuf,
+    #[clap(flatten)]
+    auth: AuthArgs,
     #[clap(short = 'o', long = "output", help = "Output path")]
     output: PathBuf,
     #[clap(short = 'r', long = "requisition-id", help = "Requisition ID")]
@@ -34,11 +34,10 @@ pub struct Cmd {
 }
 impl Cmd {
     #[instrument("sync", skip_all, fields(
-        token = ?self.token,
         requisition_id = %self.requisition_id,
     ))]
     pub(crate) async fn run(&self) -> Result<()> {
-        let token = load_token(&self.token).await?;
+        let token = self.auth.load_token().await?;
 
         let client = BankDataClient::new(token);
 

@@ -1,16 +1,14 @@
-use std::path::PathBuf;
-
 use clap::Parser;
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
-use crate::{auth::load_token, client::BankDataClient};
+use crate::{auth::AuthArgs, client::BankDataClient};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
-    #[clap(short = 't', long = "token", help = "Token file")]
-    token: PathBuf,
+    #[clap(flatten)]
+    auth: AuthArgs,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,7 +25,7 @@ struct Institution {
 impl Cmd {
     #[instrument("institutions", skip_all)]
     pub(crate) async fn run(&self) -> Result<()> {
-        let token = load_token(&self.token).await?;
+        let token = self.auth.load_token().await?;
 
         let client = BankDataClient::new(token);
 

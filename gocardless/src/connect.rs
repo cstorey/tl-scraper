@@ -1,4 +1,4 @@
-use std::{net::IpAddr, path::PathBuf};
+use std::net::IpAddr;
 
 use axum::{
     debug_handler,
@@ -16,12 +16,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, field, info, instrument, warn, Span};
 use uuid::Uuid;
 
-use crate::{auth::load_token, client::BankDataClient};
+use crate::{auth::AuthArgs, client::BankDataClient};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
-    #[clap(short = 't', long = "token", help = "Token file")]
-    token: PathBuf,
+    #[clap(flatten)]
+    auth: AuthArgs,
     #[clap(short = 'i', long = "institution", help = "Institution ID")]
     institution_id: String,
     #[clap(short = 'p', long = "port", help = "HTTP Listener port")]
@@ -74,7 +74,7 @@ pub(crate) enum RequisitionStatus {
 impl Cmd {
     #[instrument("auth", skip_all, fields(requisition_id))]
     pub(crate) async fn run(&self) -> Result<()> {
-        let token = load_token(&self.token).await?;
+        let token = self.auth.load_token().await?;
 
         let client = BankDataClient::new(token);
 

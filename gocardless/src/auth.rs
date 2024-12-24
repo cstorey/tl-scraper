@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
-use clap::Parser;
+use clap::{Args, Parser};
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument};
@@ -12,6 +12,12 @@ use crate::client::BankDataClient;
 pub struct Cmd {
     #[clap(short = 's', long = "secrets", help = "Secrets file")]
     secrets: PathBuf,
+    #[clap(short = 't', long = "token", help = "Token file")]
+    token: PathBuf,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct AuthArgs {
     #[clap(short = 't', long = "token", help = "Token file")]
     token: PathBuf,
 }
@@ -73,7 +79,7 @@ impl Token {
 }
 
 #[instrument(skip_all, fields(?path))]
-pub(crate) async fn store_token(path: &Path, tok: &Token) -> Result<()> {
+async fn store_token(path: &Path, tok: &Token) -> Result<()> {
     let buf = serde_json::to_vec(&tok)?;
     tokio::fs::write(&path, buf).await?;
     debug!(?path, "Stored token");
@@ -81,7 +87,7 @@ pub(crate) async fn store_token(path: &Path, tok: &Token) -> Result<()> {
 }
 
 #[instrument(skip_all, fields(?path))]
-pub(crate) async fn load_token(path: &Path) -> Result<Token> {
+async fn load_token(path: &Path) -> Result<Token> {
     let buf = tokio::fs::read(&path).await?;
     let secrets = serde_json::from_slice(&buf)?;
 
@@ -91,11 +97,17 @@ pub(crate) async fn load_token(path: &Path) -> Result<Token> {
 }
 
 #[instrument(skip_all, fields(?path))]
-pub(crate) async fn load_secrets(path: &Path) -> Result<Secrets> {
+async fn load_secrets(path: &Path) -> Result<Secrets> {
     let buf = tokio::fs::read(&path).await?;
     let secrets = serde_json::from_slice(&buf)?;
 
     debug!(?path, "Loaded secrets");
 
     Ok(secrets)
+}
+
+impl AuthArgs {
+    pub(crate) async fn load_token(&self) -> Result<Token> {
+        load_token(&self.token).await
+    }
 }
