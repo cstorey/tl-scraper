@@ -1,6 +1,7 @@
 mod accounts;
 mod auth;
 mod client;
+mod config;
 mod connect;
 mod institutions;
 mod sync;

@@ -1,6 +1,5 @@
 use std::{
     cmp,
-    collections::HashMap,
     path::{Path, PathBuf},
 };
 
@@ -10,7 +9,7 @@ use color_eyre::{
     eyre::{eyre, Context},
     Result,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, instrument};
 use uuid::Uuid;
@@ -19,6 +18,7 @@ use crate::{
     accounts::{Account, Balances},
     auth::AuthArgs,
     client::BankDataClient,
+    config::{ProviderConfig, ScraperConfig},
     connect::Requisition,
     transactions::{Transactions, TransactionsQuery},
 };
@@ -31,24 +31,6 @@ pub struct Cmd {
     config: PathBuf,
     #[clap(short = 'p', long = "provider", help = "Provider name")]
     provider: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ProviderConfig {
-    output: PathBuf,
-    requisition_id: Uuid,
-    // Default: 90days
-    history_days: Option<u64>,
-}
-impl ProviderConfig {
-    fn history_days(&self) -> Days {
-        Days::new(self.history_days.unwrap_or(90))
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ScraperConfig {
-    provider: HashMap<String, ProviderConfig>,
 }
 
 impl Cmd {
