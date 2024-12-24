@@ -7,7 +7,7 @@ use color_eyre::{
 };
 use reqwest::{header::CONTENT_TYPE, Client};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::auth::Token;
 
@@ -62,11 +62,13 @@ impl UnauthenticatedBankDataClient {
             .send()
             .await?
             .parse_error()
-            .await?
-            .json()
             .await?;
 
-        Ok(resp)
+        log_rate_limits(&resp)?;
+
+        let data = resp.json().await?;
+
+        Ok(data)
     }
 }
 
@@ -98,11 +100,13 @@ impl BankDataClient {
             .send()
             .await?
             .parse_error()
-            .await?
-            .json()
             .await?;
 
-        Ok(resp)
+        log_rate_limits(&resp)?;
+
+        let data = resp.json().await?;
+
+        Ok(data)
     }
 
     pub(crate) async fn post<Response: DeserializeOwned>(
@@ -128,12 +132,54 @@ impl BankDataClient {
             .send()
             .await?
             .parse_error()
-            .await?
-            .json()
             .await?;
 
-        Ok(resp)
+        log_rate_limits(&resp)?;
+
+        let data = resp.json().await?;
+
+        Ok(data)
     }
+}
+
+fn log_rate_limits(resp: &reqwest::Response) -> Result<()> {
+    const HTTP_X_RATELIMIT_LIMIT: &str = "HTTP_X_RATELIMIT_LIMIT";
+    let Some(limit) = resp.headers().get(HTTP_X_RATELIMIT_LIMIT) else {
+        warn!(header=%HTTP_X_RATELIMIT_LIMIT, "rate limit header missing");
+        return Ok(());
+    };
+
+    const HTTP_X_RATELIMIT_REMAINING: &str = "HTTP_X_RATELIMIT_REMAINING";
+    let Some(remaining) = resp.headers().get(HTTP_X_RATELIMIT_REMAINING) else {
+        warn!(header=%HTTP_X_RATELIMIT_REMAINING, "rate limit header missing");
+        return Ok(());
+    };
+
+    const HTTP_X_RATELIMIT_RESET: &str = "HTTP_X_RATELIMIT_RESET";
+    let Some(reset) = resp.headers().get(HTTP_X_RATELIMIT_RESET) else {
+        warn!(header=%HTTP_X_RATELIMIT_RESET, "rate limit header missing");
+        return Ok(());
+    };
+
+    let limit = limit
+        .to_str()
+        .context(HTTP_X_RATELIMIT_LIMIT)?
+        .parse::<u64>()
+        .context(HTTP_X_RATELIMIT_LIMIT)?;
+    let remaining = remaining
+        .to_str()
+        .context(HTTP_X_RATELIMIT_REMAINING)?
+        .parse::<u64>()
+        .context(HTTP_X_RATELIMIT_LIMIT)?;
+    let reset = reset
+        .to_str()
+        .context(HTTP_X_RATELIMIT_RESET)?
+        .parse::<u64>()
+        .context(HTTP_X_RATELIMIT_LIMIT)?;
+
+    debug!(%limit, %remaining, %reset, "Rate limit status");
+
+    Ok(())
 }
 
 impl RequestErrors for reqwest::Response {
@@ -158,7 +204,7 @@ impl RequestErrors for reqwest::Response {
             }
         }
 
-        debug!(status=?resp.status(), headers=?resp.headers());
+        trace!(status=?resp.status(), headers=?resp.headers());
         Ok(resp.error_for_status()?)
     }
 }
