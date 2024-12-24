@@ -183,18 +183,15 @@ fn log_rate_limits(resp: &reqwest::Response, started_at: DateTime<Utc>) -> Resul
     debug!(%limit, %remaining, %reset_at, "Rate limit status");
 
     let Some(limit) = maybe_parse_header(resp, HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_LIMIT)? else {
-        warn!(header=%HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_LIMIT, "rate limit header missing");
         return Ok(());
     };
 
     let Some(remaining) = maybe_parse_header(resp, HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING)?
     else {
-        warn!(header=%HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING, "rate limit header missing");
         return Ok(());
     };
 
     let Some(reset) = maybe_parse_header(resp, HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET)? else {
-        warn!(header=%HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET, "rate limit header missing");
         return Ok(());
     };
 
@@ -207,7 +204,7 @@ fn log_rate_limits(resp: &reqwest::Response, started_at: DateTime<Utc>) -> Resul
 
 fn maybe_parse_header(resp: &reqwest::Response, header: &str) -> Result<Option<i64>> {
     let Some(limit) = resp.headers().get(header) else {
-        warn!(header=%header, "rate limit header missing");
+        trace!(header=%header, "rate limit header missing");
         return Ok(None);
     };
     let s = limit.to_str().wrap_err_with(|| header.to_owned())?;
