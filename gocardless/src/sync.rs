@@ -1,14 +1,8 @@
-use std::{
-    cmp,
-    path::{Path, PathBuf},
-};
+use std::{cmp, path::Path};
 
 use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
-use color_eyre::{
-    eyre::{eyre, Context},
-    Result,
-};
+use color_eyre::{eyre::eyre, Result};
 use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, instrument};
@@ -18,7 +12,7 @@ use crate::{
     accounts::{Account, Balances},
     auth::AuthArgs,
     client::BankDataClient,
-    config::{ProviderConfig, ScraperConfig},
+    config::{ConfigArg, ProviderConfig, ScraperConfig},
     connect::Requisition,
     transactions::{Transactions, TransactionsQuery},
 };
@@ -27,8 +21,8 @@ use crate::{
 pub struct Cmd {
     #[clap(flatten)]
     auth: AuthArgs,
-    #[clap(short = 'c', long = "config", help = "Configuration")]
-    config: PathBuf,
+    #[clap(flatten)]
+    config: ConfigArg,
     #[clap(short = 'p', long = "provider", help = "Provider name")]
     provider: String,
 }
@@ -36,12 +30,7 @@ pub struct Cmd {
 impl Cmd {
     #[instrument("sync", skip_all, fields())]
     pub(crate) async fn run(&self) -> Result<()> {
-        let config: ScraperConfig = {
-            let content = tokio::fs::read_to_string(&self.config)
-                .await
-                .wrap_err("Reading config file")?;
-            toml::from_str(&content).context("Parse toml")?
-        };
+        let config: ScraperConfig = self.config.load().await?;
         let token = self.auth.load_token().await?;
 
         let Some(provider_config) = config.provider.get(&self.provider) else {
