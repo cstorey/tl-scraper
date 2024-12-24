@@ -1,6 +1,7 @@
 use std::fmt;
 
 use axum::http::{uri::Scheme, Uri};
+use chrono::{DateTime, Duration, Utc};
 use color_eyre::{
     eyre::{eyre, Context},
     Result,
@@ -60,6 +61,8 @@ impl UnauthenticatedBankDataClient {
 
         debug!(%url, "POST");
 
+        let started_at = Utc::now();
+
         let resp = self
             .http
             .post(url)
@@ -69,7 +72,7 @@ impl UnauthenticatedBankDataClient {
             .parse_error()
             .await?;
 
-        log_rate_limits(&resp)?;
+        log_rate_limits(&resp, started_at)?;
 
         let data = resp.json().await?;
 
@@ -97,6 +100,8 @@ impl BankDataClient {
             .wrap_err("Build base URI")?
             .to_string();
 
+        let started_at = Utc::now();
+
         debug!(%url, "GET");
         let resp = self
             .http
@@ -107,7 +112,7 @@ impl BankDataClient {
             .parse_error()
             .await?;
 
-        log_rate_limits(&resp)?;
+        log_rate_limits(&resp, started_at)?;
 
         let data = resp.json().await?;
 
@@ -128,6 +133,8 @@ impl BankDataClient {
             .wrap_err("Build base URI")?
             .to_string();
 
+        let started_at = Utc::now();
+
         debug!(%url, "POST");
         let resp = self
             .http
@@ -139,7 +146,7 @@ impl BankDataClient {
             .parse_error()
             .await?;
 
-        log_rate_limits(&resp)?;
+        log_rate_limits(&resp, started_at)?;
 
         let data = resp.json().await?;
 
@@ -147,44 +154,65 @@ impl BankDataClient {
     }
 }
 
-fn log_rate_limits(resp: &reqwest::Response) -> Result<()> {
-    const HTTP_X_RATELIMIT_LIMIT: &str = "HTTP_X_RATELIMIT_LIMIT";
-    let Some(limit) = resp.headers().get(HTTP_X_RATELIMIT_LIMIT) else {
+const HTTP_X_RATELIMIT_LIMIT: &str = "HTTP_X_RATELIMIT_LIMIT";
+const HTTP_X_RATELIMIT_REMAINING: &str = "HTTP_X_RATELIMIT_REMAINING";
+const HTTP_X_RATELIMIT_RESET: &str = "HTTP_X_RATELIMIT_RESET";
+const HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_LIMIT: &str = "HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_LIMIT";
+const HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING: &str =
+    "HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING";
+const HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET: &str = "HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET";
+
+fn log_rate_limits(resp: &reqwest::Response, started_at: DateTime<Utc>) -> Result<()> {
+    let Some(limit) = maybe_parse_header(resp, HTTP_X_RATELIMIT_LIMIT)? else {
         warn!(header=%HTTP_X_RATELIMIT_LIMIT, "rate limit header missing");
         return Ok(());
     };
 
-    const HTTP_X_RATELIMIT_REMAINING: &str = "HTTP_X_RATELIMIT_REMAINING";
-    let Some(remaining) = resp.headers().get(HTTP_X_RATELIMIT_REMAINING) else {
+    let Some(remaining) = maybe_parse_header(resp, HTTP_X_RATELIMIT_REMAINING)? else {
         warn!(header=%HTTP_X_RATELIMIT_REMAINING, "rate limit header missing");
         return Ok(());
     };
 
-    const HTTP_X_RATELIMIT_RESET: &str = "HTTP_X_RATELIMIT_RESET";
-    let Some(reset) = resp.headers().get(HTTP_X_RATELIMIT_RESET) else {
+    let Some(reset) = maybe_parse_header(resp, HTTP_X_RATELIMIT_RESET)? else {
         warn!(header=%HTTP_X_RATELIMIT_RESET, "rate limit header missing");
         return Ok(());
     };
 
-    let limit = limit
-        .to_str()
-        .context(HTTP_X_RATELIMIT_LIMIT)?
-        .parse::<u64>()
-        .context(HTTP_X_RATELIMIT_LIMIT)?;
-    let remaining = remaining
-        .to_str()
-        .context(HTTP_X_RATELIMIT_REMAINING)?
-        .parse::<u64>()
-        .context(HTTP_X_RATELIMIT_LIMIT)?;
-    let reset = reset
-        .to_str()
-        .context(HTTP_X_RATELIMIT_RESET)?
-        .parse::<u64>()
-        .context(HTTP_X_RATELIMIT_LIMIT)?;
+    let reset_at = started_at + Duration::seconds(reset);
 
-    debug!(%limit, %remaining, %reset, "Rate limit status");
+    debug!(%limit, %remaining, %reset_at, "Rate limit status");
+
+    let Some(limit) = maybe_parse_header(resp, HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_LIMIT)? else {
+        warn!(header=%HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_LIMIT, "rate limit header missing");
+        return Ok(());
+    };
+
+    let Some(remaining) = maybe_parse_header(resp, HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING)?
+    else {
+        warn!(header=%HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING, "rate limit header missing");
+        return Ok(());
+    };
+
+    let Some(reset) = maybe_parse_header(resp, HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET)? else {
+        warn!(header=%HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET, "rate limit header missing");
+        return Ok(());
+    };
+
+    let reset_at = started_at + Duration::seconds(reset);
+
+    debug!(%limit, %remaining, %reset_at, "Account rate limit status");
 
     Ok(())
+}
+
+fn maybe_parse_header(resp: &reqwest::Response, header: &str) -> Result<Option<i64>> {
+    let Some(limit) = resp.headers().get(header) else {
+        warn!(header=%header, "rate limit header missing");
+        return Ok(None);
+    };
+    let s = limit.to_str().wrap_err_with(|| header.to_owned())?;
+    let limit = s.parse().wrap_err_with(|| header.to_owned())?;
+    Ok(Some(limit))
 }
 
 impl RequestErrors for reqwest::Response {
