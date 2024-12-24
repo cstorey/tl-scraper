@@ -1,4 +1,7 @@
-use std::{cmp, path::PathBuf};
+use std::{
+    cmp,
+    path::{Path, PathBuf},
+};
 
 use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
@@ -74,17 +77,21 @@ impl Cmd {
         start_date: NaiveDate,
         end_date: NaiveDate,
     ) -> Result<()> {
+        let account_base = PathBuf::from(account_id.to_string());
+
         let details = client
             .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
             .await?;
 
-        self.write_file("account-details.json", &details).await?;
+        self.write_file(&account_base.join("account-details.json"), &details)
+            .await?;
 
         let details = client
             .get::<Balances>(&format!("/api/v2/accounts/{}/balances/", account_id,))
             .await?;
 
-        self.write_file("balances.json", &details).await?;
+        self.write_file(&account_base.join("balances.json"), &details)
+            .await?;
 
         let ranges = (0..)
             .map(|n| start_date + Months::new(n))
@@ -109,7 +116,7 @@ impl Cmd {
                 ))
                 .await?;
 
-            let path = start.format("%Y-%m.json").to_string();
+            let path = account_base.join(start.format("%Y-%m.json").to_string());
             self.write_file(&path, &transactions).await?;
         }
 
@@ -119,7 +126,7 @@ impl Cmd {
     #[instrument(skip_all, fields(?path))]
     async fn write_file(
         &self,
-        path: &str,
+        path: &Path,
         data: impl Serialize,
     ) -> Result<(), color_eyre::eyre::Error> {
         let path = self.output.join(path);
