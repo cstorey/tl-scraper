@@ -3,6 +3,7 @@ mod auth;
 mod client;
 mod connect;
 mod institutions;
+mod sync;
 mod transactions;
 
 use clap::Parser;
@@ -15,6 +16,7 @@ pub enum Command {
     Connect(connect::Cmd),
     ListAccounts(accounts::ListCmd),
     ListTransactions(transactions::Cmd),
+    Sync(sync::Cmd),
 }
 
 impl Command {
@@ -25,6 +27,7 @@ impl Command {
             Command::Connect(cmd) => cmd.run().await?,
             Command::ListAccounts(cmd) => cmd.run().await?,
             Command::ListTransactions(cmd) => cmd.run().await?,
+            Command::Sync(cmd) => cmd.run().await?,
         }
 
         Ok(())

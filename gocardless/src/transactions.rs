@@ -22,14 +22,14 @@ pub struct Cmd {
 }
 
 #[derive(Debug, Serialize)]
-struct TransactionsQuery {
-    date_from: NaiveDate,
-    date_to: NaiveDate,
+pub(crate) struct TransactionsQuery {
+    pub(crate) date_from: NaiveDate,
+    pub(crate) date_to: NaiveDate,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 
-struct Transactions {
+pub(crate) struct Transactions {
     pub(crate) transactions: TransactionsInner,
     #[serde(flatten)]
     pub(crate) other: serde_json::Value,
@@ -37,7 +37,7 @@ struct Transactions {
 
 #[derive(Debug, Serialize, Deserialize)]
 
-struct TransactionsInner {
+pub(crate) struct TransactionsInner {
     pub(crate) booked: Vec<Transaction>,
     pub(crate) pending: Vec<Transaction>,
     #[serde(flatten)]
@@ -45,7 +45,7 @@ struct TransactionsInner {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Transaction {
+pub(crate) struct Transaction {
     #[serde(flatten)]
     pub(crate) other: serde_json::Value,
 }
