@@ -75,11 +75,11 @@ impl Cmd {
         start_date: NaiveDate,
         end_date: NaiveDate,
     ) -> Result<()> {
-        let account_base = provider_config.output.join(account_id.to_string());
-
         let details = client
             .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
             .await?;
+
+        let account_base = provider_config.output.join(&details.iban);
 
         self.write_file(&account_base.join("account-details.json"), &details)
             .await?;
