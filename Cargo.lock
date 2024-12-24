@@ -689,6 +689,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-util",
+ "toml",
  "tracing",
  "tracing-error",
  "tracing-log",

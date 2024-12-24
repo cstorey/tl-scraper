@@ -1,12 +1,16 @@
 use std::{
     cmp,
+    collections::HashMap,
     path::{Path, PathBuf},
 };
 
 use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
-use color_eyre::{eyre::eyre, Result};
-use serde::Serialize;
+use color_eyre::{
+    eyre::{eyre, Context},
+    Result,
+};
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, instrument};
 use uuid::Uuid;
@@ -23,29 +27,52 @@ use crate::{
 pub struct Cmd {
     #[clap(flatten)]
     auth: AuthArgs,
-    #[clap(short = 'o', long = "output", help = "Output path")]
-    output: PathBuf,
-    #[clap(short = 'r', long = "requisition-id", help = "Requisition ID")]
-    requisition_id: Uuid,
-    #[clap(
-        short = 'd',
-        long = "historical-days",
-        help = "Number of days we can access",
-        default_value_t = 90
-    )]
-    history_days: u64,
+    #[clap(short = 'c', long = "config", help = "Configuration")]
+    config: PathBuf,
+    #[clap(short = 'p', long = "provider", help = "Provider name")]
+    provider: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+struct ProviderConfig {
+    output: PathBuf,
+    requisition_id: Uuid,
+    // Default: 90days
+    history_days: Option<u64>,
+}
+impl ProviderConfig {
+    fn history_days(&self) -> Days {
+        Days::new(self.history_days.unwrap_or(90))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ScraperConfig {
+    provider: HashMap<String, ProviderConfig>,
+}
+
 impl Cmd {
-    #[instrument("sync", skip_all, fields(
-        requisition_id = %self.requisition_id,
-    ))]
+    #[instrument("sync", skip_all, fields())]
     pub(crate) async fn run(&self) -> Result<()> {
+        let config: ScraperConfig = {
+            let content = tokio::fs::read_to_string(&self.config)
+                .await
+                .wrap_err("Reading config file")?;
+            toml::from_str(&content).context("Parse toml")?
+        };
         let token = self.auth.load_token().await?;
+
+        let Some(provider_config) = config.provider.get(&self.provider) else {
+            return Err(eyre!("Unrecognised provider: {}", self.provider));
+        };
 
         let client = BankDataClient::new(token);
 
         let requisition = client
-            .get::<Requisition>(&format!("/api/v2/requisitions/{}/", self.requisition_id))
+            .get::<Requisition>(&format!(
+                "/api/v2/requisitions/{}/",
+                provider_config.requisition_id
+            ))
             .await?;
 
         debug!(?requisition, "Got requisition",);
@@ -55,7 +82,7 @@ impl Cmd {
         }
 
         let end_date = Local::now().date_naive();
-        let mut start_date = end_date - Days::new(self.history_days);
+        let mut start_date = end_date - provider_config.history_days();
         if start_date.day() > 1 {
             start_date = start_date + Months::new(1);
             start_date = start_date - Days::new(start_date.day0().into());
@@ -63,7 +90,7 @@ impl Cmd {
         debug!(%start_date, %end_date, "Scanning date range");
 
         for acc in requisition.accounts.iter().cloned() {
-            self.list_account(&client, acc, start_date, end_date)
+            self.list_account(provider_config, &client, acc, start_date, end_date)
                 .await?;
         }
         Ok(())
@@ -72,12 +99,13 @@ impl Cmd {
     #[instrument(skip_all,fields(%account_id))]
     async fn list_account(
         &self,
+        provider_config: &ProviderConfig,
         client: &BankDataClient,
         account_id: Uuid,
         start_date: NaiveDate,
         end_date: NaiveDate,
     ) -> Result<()> {
-        let account_base = PathBuf::from(account_id.to_string());
+        let account_base = provider_config.output.join(account_id.to_string());
 
         let details = client
             .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
@@ -129,7 +157,6 @@ impl Cmd {
         path: &Path,
         data: impl Serialize,
     ) -> Result<(), color_eyre::eyre::Error> {
-        let path = self.output.join(path);
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }

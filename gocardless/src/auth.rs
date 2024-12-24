@@ -4,18 +4,12 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, Utc};
-use clap::{Args, Parser};
+use clap::Args;
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument, warn};
 
 use crate::client::BankDataClient;
-
-#[derive(Debug, Parser)]
-pub struct Cmd {
-    #[clap(flatten)]
-    auth: AuthArgs,
-}
 
 #[derive(Debug, Clone, Args)]
 pub struct AuthArgs {
@@ -56,15 +50,6 @@ pub(crate) struct Token {
     access_expires: DateTime<Utc>,
     refresh: String,
     refresh_expires: DateTime<Utc>,
-}
-
-impl Cmd {
-    #[instrument("auth", skip_all)]
-    pub(crate) async fn run(&self) -> Result<()> {
-        let _ = self.auth.load_token().await?;
-
-        Ok(())
-    }
 }
 
 impl Token {
