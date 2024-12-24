@@ -19,7 +19,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, field, info, instrument, warn, Span};
 use uuid::Uuid;
 
-use crate::{auth::AuthArgs, client::BankDataClient, config::ConfigArg};
+use crate::{
+    auth::AuthArgs,
+    client::BankDataClient,
+    config::{ConfigArg, ProviderState},
+};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
@@ -132,6 +136,10 @@ impl Cmd {
             .await?;
 
         debug!(?requisition, "Got requisition",);
+
+        let state = ProviderState::from_requisition(&requisition);
+
+        provider_config.write_state(&state).await?;
 
         Ok(())
     }

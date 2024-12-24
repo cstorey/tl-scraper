@@ -39,11 +39,10 @@ impl Cmd {
 
         let client = BankDataClient::new(token);
 
+        let state = provider_config.load_state().await?;
+
         let requisition = client
-            .get::<Requisition>(&format!(
-                "/api/v2/requisitions/{}/",
-                provider_config.requisition_id
-            ))
+            .get::<Requisition>(&format!("/api/v2/requisitions/{}/", state.requisition_id))
             .await?;
 
         debug!(?requisition, "Got requisition",);
