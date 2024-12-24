@@ -14,6 +14,7 @@ pub(crate) struct ConfigArg {
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ProviderConfig {
+    pub(crate) institution_id: String,
     pub(crate) output: PathBuf,
     pub(crate) requisition_id: Uuid,
     pub(crate) history_days: Option<u64>,

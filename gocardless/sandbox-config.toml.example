@@ -1,3 +1,4 @@
 [provider.mock]
+institution_id = "SANDBOXFINANCE_SFIN0000"
 output = "tmp/mock"
 requisition_id = "00000000-0000-0000-0000-000000000000"

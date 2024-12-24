@@ -9,22 +9,27 @@ use axum::{
     Router,
 };
 use clap::Parser;
-use color_eyre::{eyre::Context, Report, Result};
+use color_eyre::{
+    eyre::{eyre, Context},
+    Report, Result,
+};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, field, info, instrument, warn, Span};
 use uuid::Uuid;
 
-use crate::{auth::AuthArgs, client::BankDataClient};
+use crate::{auth::AuthArgs, client::BankDataClient, config::ConfigArg};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
     #[clap(flatten)]
     auth: AuthArgs,
-    #[clap(short = 'i', long = "institution", help = "Institution ID")]
-    institution_id: String,
-    #[clap(short = 'p', long = "port", help = "HTTP Listener port")]
+    #[clap(flatten)]
+    config: ConfigArg,
+    #[clap(short = 'p', long = "provider", help = "Provider name")]
+    provider: String,
+    #[clap(short = 'l', long = "port", help = "HTTP Listener port")]
     port: u16,
 }
 
@@ -72,9 +77,16 @@ pub(crate) enum RequisitionStatus {
 }
 
 impl Cmd {
-    #[instrument("auth", skip_all, fields(requisition_id))]
+    #[instrument("auth", skip_all, fields(provider = %self.provider, institution_id, requisition_id))]
     pub(crate) async fn run(&self) -> Result<()> {
+        let config = self.config.load().await?;
         let token = self.auth.load_token().await?;
+
+        let Some(provider_config) = config.provider.get(&self.provider) else {
+            return Err(eyre!("Unrecognised provider: {}", self.provider));
+        };
+
+        Span::current().record("institution_id", &provider_config.institution_id);
 
         let client = BankDataClient::new(token);
 
@@ -93,7 +105,7 @@ impl Cmd {
             .context("Build base URI")?;
 
         let req = RequisitionReq {
-            institution_id: self.institution_id.clone(),
+            institution_id: provider_config.institution_id.clone(),
             redirect: base_url.to_string(),
         };
 
