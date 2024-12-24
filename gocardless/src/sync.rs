@@ -1,6 +1,6 @@
-use std::path::PathBuf;
+use std::{cmp, path::PathBuf};
 
-use chrono::NaiveDate;
+use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use serde::Serialize;
@@ -24,10 +24,13 @@ pub struct Cmd {
     output: PathBuf,
     #[clap(short = 'r', long = "requisition-id", help = "Requisition ID")]
     requisition_id: Uuid,
-    #[clap(short = 's', long = "start-date", help = "Start Date")]
-    start_date: NaiveDate,
-    #[clap(short = 'e', long = "end-date", help = "End Date")]
-    end_date: NaiveDate,
+    #[clap(
+        short = 'd',
+        long = "historical-days",
+        help = "Number of days we can access",
+        default_value_t = 90
+    )]
+    history_days: u64,
 }
 impl Cmd {
     #[instrument("sync", skip_all, fields(
@@ -49,14 +52,29 @@ impl Cmd {
             return Err(eyre!("Requisition not linked"));
         }
 
+        let end_date = Local::now().date_naive();
+        let mut start_date = end_date - Days::new(self.history_days);
+        if start_date.day() > 1 {
+            start_date = start_date + Months::new(1);
+            start_date = start_date - Days::new(start_date.day0().into());
+        }
+        debug!(%start_date, %end_date, "Scanning date range");
+
         for acc in requisition.accounts.iter().cloned() {
-            self.list_account(&client, acc).await?;
+            self.list_account(&client, acc, start_date, end_date)
+                .await?;
         }
         Ok(())
     }
 
     #[instrument(skip_all,fields(%account_id))]
-    async fn list_account(&self, client: &BankDataClient, account_id: Uuid) -> Result<()> {
+    async fn list_account(
+        &self,
+        client: &BankDataClient,
+        account_id: Uuid,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<()> {
         let details = client
             .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
             .await?;
@@ -69,18 +87,32 @@ impl Cmd {
 
         self.write_file("balances.json", &details).await?;
 
-        let transactions = client
-            .get::<Transactions>(&format!(
-                "/api/v2/accounts/{}/transactions/?{}",
-                account_id,
-                serde_urlencoded::to_string(TransactionsQuery {
-                    date_from: self.start_date,
-                    date_to: self.end_date,
-                })?
-            ))
-            .await?;
+        let ranges = (0..)
+            .map(|n| start_date + Months::new(n))
+            .take_while(|d| d <= &end_date)
+            .map(|month_start| {
+                let month_end = (month_start + Months::new(1))
+                    .pred_opt()
+                    .expect("previous day");
+                (month_start, cmp::min(month_end, end_date))
+            });
 
-        self.write_file("transactions.json", &transactions).await?;
+        for (start, end) in ranges {
+            debug!(%start, %end, "scanning month");
+            let transactions = client
+                .get::<Transactions>(&format!(
+                    "/api/v2/accounts/{}/transactions/?{}",
+                    account_id,
+                    serde_urlencoded::to_string(&TransactionsQuery {
+                        date_from: start,
+                        date_to: end,
+                    })?
+                ))
+                .await?;
+
+            let path = start.format("%Y-%m.json").to_string();
+            self.write_file(&path, &transactions).await?;
+        }
 
         Ok(())
     }

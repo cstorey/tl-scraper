@@ -24,9 +24,14 @@ pub(crate) struct BankDataClient {
 }
 #[derive(Debug, Deserialize)]
 struct ErrorResponse {
+    #[serde(default)]
     summary: String,
+    #[serde(default)]
     detail: String,
+    #[serde(default)]
     status_code: u16,
+    #[serde(flatten)]
+    other: serde_json::Value,
 }
 
 pub(crate) trait RequestErrors: Sized {
@@ -221,10 +226,13 @@ impl fmt::Display for ErrorResponse {
             summary,
             detail,
             status_code,
+            other,
         } = self;
         write!(
             f,
-            "Summary: {summary:?}; details: {detail:?}, status_code: {status_code:?}",
+            "Summary: {summary:?}; details: {detail:?}, status_code: {status_code:?}, other: {}",
+            serde_json::to_string(other)
+                .unwrap_or_else(|err| format!("Error rendering other: {err}")),
         )
     }
 }
