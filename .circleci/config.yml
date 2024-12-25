@@ -3,14 +3,14 @@
 
 version: 2
 _anchors:
-  restore_registry: &RESTORE_REGISTRY
+  restore_dot_cargo: &RESTORE_DOT_CARGO
     restore_cache:
-      key: registry-{{ checksum "~/rust-version" }}
-  save_registry: &SAVE_REGISTRY
+      key: dot-cargo-{{ checksum "~/rust-version" }}
+  save_dot_cargo: &SAVE_DOT_CARGO
     save_cache:
-      key: registry-{{ checksum "~/rust-version" }}-{{ .BuildNum }}
+      key: dot-cargo-{{ checksum "~/rust-version" }}-{{ .BuildNum }}
       paths:
-      - ~/.cargo/registry/index
+      - ~/.cargo
   deps_key: &DEPS_KEY
     key: deps-{{ checksum "~/rust-version" }}-{{ checksum "Cargo.lock" }}
   restore_deps: &RESTORE_DEPS
@@ -21,7 +21,6 @@ _anchors:
       <<: *DEPS_KEY
       paths:
       - target
-      - ~/.cargo/registry/cache
 
 jobs:
   build:
@@ -37,11 +36,11 @@ jobs:
           git config --global user.email "circleci@invalid.example"
           git config --global user.name "CircleCI build"
           git merge --no-edit --no-ff origin/main
-      - *RESTORE_REGISTRY
+      - *RESTORE_DOT_CARGO
       - run: cargo fmt -- --check
       - *RESTORE_DEPS
       - run: cargo build --locked --all --tests
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - *SAVE_REGISTRY
+      - *SAVE_DOT_CARGO
       - *SAVE_DEPS
       - run: cargo test --locked --all
