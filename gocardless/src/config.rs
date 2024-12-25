@@ -5,7 +5,7 @@ use clap::Args;
 use color_eyre::{eyre::Context, Result};
 use serde::{Deserialize, Serialize};
 use tokio::task::spawn_blocking;
-use tracing::Span;
+use tracing::{instrument, Span};
 use uuid::Uuid;
 
 use crate::connect::Requisition;
@@ -48,6 +48,7 @@ impl ProviderConfig {
         Days::new(self.history_days.unwrap_or(90))
     }
 
+    #[instrument(skip_all, fields(path=?self.state))]
     pub(crate) async fn write_state(&self, state: &ProviderState) -> Result<()> {
         let span = Span::current();
         let path = self.state.to_owned();
@@ -67,6 +68,7 @@ impl ProviderConfig {
         Ok(())
     }
 
+    #[instrument(skip_all, fields(path=?self.state))]
     pub(crate) async fn load_state(&self) -> Result<ProviderState> {
         let span = Span::current();
         let path = self.state.to_owned();
@@ -80,6 +82,7 @@ impl ProviderConfig {
         .await?
     }
 }
+
 impl ProviderState {
     pub(crate) fn from_requisition(requisition: &Requisition) -> Self {
         ProviderState {
