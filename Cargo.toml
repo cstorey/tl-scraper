@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["truelayer"]
+members = ["gocardless", "truelayer"]
 
 [workspace.dependencies]
 tokio = { version = "1.42.0", features = ["full"] }
@@ -26,3 +26,6 @@ url = "2.5.4"
 askama = { version = "0.12.1" }
 toml = "0.8.19"
 again = "0.1.2"
+color-eyre = "0.6.3"
+tracing-error = "0.2.1"
+uuid = { version = "1.11.0", features = ["serde"] }

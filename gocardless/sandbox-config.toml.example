@@ -1,0 +1,4 @@
+[provider.mock]
+institution_id = "SANDBOXFINANCE_SFIN0000"
+output = "tmp/mock"
+state = "tmp/mock-state.json"
