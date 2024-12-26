@@ -28,7 +28,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    #[instrument("sync", skip_all, fields())]
+    #[instrument("sync", skip_all, fields(provider = %self.provider))]
     pub(crate) async fn run(&self) -> Result<()> {
         let config: ScraperConfig = self.config.load().await?;
         let token = self.auth.load_token().await?;
