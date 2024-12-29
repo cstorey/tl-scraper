@@ -75,33 +75,19 @@ impl Cmd {
         start_date: NaiveDate,
         end_date: NaiveDate,
     ) -> Result<()> {
-        let details = client
-            .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
-            .await?;
+        let details = fetch_account(client, account_id).await?;
 
         let account_base = provider_config.output.join(&details.iban);
 
         self.write_file(&account_base.join("account-details.json"), &details)
             .await?;
 
-        let details = client
-            .get::<Balances>(&format!("/api/v2/accounts/{}/balances/", account_id,))
+        let balances = fetch_balances(client, account_id).await?;
+
+        self.write_file(&account_base.join("balances.json"), &balances)
             .await?;
 
-        self.write_file(&account_base.join("balances.json"), &details)
-            .await?;
-
-        debug!(%start_date, %end_date, "scanning dates");
-        let transactions = client
-            .get::<Transactions>(&format!(
-                "/api/v2/accounts/{}/transactions/?{}",
-                account_id,
-                serde_urlencoded::to_string(TransactionsQuery {
-                    date_from: start_date,
-                    date_to: end_date,
-                })?
-            ))
-            .await?;
+        let transactions = fetch_transactions(client, account_id, start_date, end_date).await?;
 
         let mut by_month = HashMap::<_, Transactions>::new();
 
@@ -163,4 +149,44 @@ impl Cmd {
 
         Ok(())
     }
+}
+
+#[instrument(skip_all)]
+async fn fetch_account(
+    client: &BankDataClient,
+    account_id: Uuid,
+) -> Result<Account, color_eyre::eyre::Error> {
+    let details = client
+        .get::<Account>(&format!("/api/v2/accounts/{}/", account_id))
+        .await?;
+    Ok(details)
+}
+
+#[instrument(skip_all)]
+async fn fetch_balances(client: &BankDataClient, account_id: Uuid) -> Result<Balances> {
+    let balances = client
+        .get::<Balances>(&format!("/api/v2/accounts/{}/balances/", account_id,))
+        .await?;
+    Ok(balances)
+}
+
+#[instrument(skip_all)]
+async fn fetch_transactions(
+    client: &BankDataClient,
+    account_id: Uuid,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> Result<Transactions> {
+    debug!(%start_date, %end_date, "scanning dates");
+    let transactions = client
+        .get::<Transactions>(&format!(
+            "/api/v2/accounts/{}/transactions/?{}",
+            account_id,
+            serde_urlencoded::to_string(TransactionsQuery {
+                date_from: start_date,
+                date_to: end_date,
+            })?
+        ))
+        .await?;
+    Ok(transactions)
 }
