@@ -35,8 +35,9 @@ struct ErrorResponse {
     other: serde_json::Value,
 }
 
-pub(crate) trait RequestErrors: Sized {
+pub(crate) trait ResponseExt: Sized {
     async fn parse_error(self) -> Result<Self>;
+    fn log_rate_limits(self, started_at: DateTime<Utc>) -> Result<Self>;
 }
 
 impl UnauthenticatedBankDataClient {
@@ -69,6 +70,7 @@ impl UnauthenticatedBankDataClient {
             .json(body)
             .send()
             .await?
+            .log_rate_limits(started_at)?
             .parse_error()
             .await?;
 
@@ -143,10 +145,9 @@ impl BankDataClient {
             .bearer_auth(&self.token.access)
             .send()
             .await?
+            .log_rate_limits(started_at)?
             .parse_error()
             .await?;
-
-        log_rate_limits(&resp, started_at)?;
 
         let data = resp.json().await?;
 
@@ -212,7 +213,7 @@ fn maybe_parse_header(resp: &reqwest::Response, header: &str) -> Result<Option<i
     Ok(Some(limit))
 }
 
-impl RequestErrors for reqwest::Response {
+impl ResponseExt for reqwest::Response {
     async fn parse_error(self) -> Result<Self> {
         let resp = self;
         if resp.status().is_client_error() {
@@ -236,6 +237,11 @@ impl RequestErrors for reqwest::Response {
 
         trace!(status=?resp.status(), headers=?resp.headers());
         Ok(resp.error_for_status()?)
+    }
+
+    fn log_rate_limits(self, started_at: DateTime<Utc>) -> Result<Self> {
+        log_rate_limits(&self, started_at)?;
+        Ok(self)
     }
 }
 
