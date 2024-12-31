@@ -11,6 +11,8 @@ use tracing::{debug, info, instrument, warn};
 
 use crate::client::BankDataClient;
 
+const EXPIRY_GRACE_PERIOD: Duration = Duration::minutes(1);
+
 #[derive(Debug, Clone, Args)]
 pub struct AuthArgs {
     #[clap(short = 's', long = "secrets", help = "Secrets file")]
@@ -95,7 +97,7 @@ async fn load_token(path: &Path) -> Result<Option<Token>> {
 
     let now = Utc::now();
 
-    if token.access_expires <= now {
+    if token.access_expires - EXPIRY_GRACE_PERIOD <= now {
         debug!(expired_at=?token.access_expires, "Access token expired, refreshing");
         token = refresh_token(&token).await?;
 
